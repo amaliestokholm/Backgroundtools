@@ -4,8 +4,8 @@ This is very much work in progress, but I will upload them here for version cont
 
 Currently, these scripts should work if you place them within your `Background` directory.
 
-
-- `Run\ Background\ for\ multiple\ targets.ipynb`
+### The scripts
+#### `Run\ Background\ for\ multiple\ targets.ipynb`
 
 This is a Jupyter notebook that allows the user to run multiple runs of Background.
 
@@ -14,7 +14,8 @@ Given a csv file with possible guess of numax, this script initialises the backg
 It then outputs a shellscript, which the user can run in their terminal and which fits all the stars with their computed set of priors.
 
 This script can also produce overview plots of each fit and make a summary outputs for a better overview of all the fits in the given run.
-- `backgroundevaluation.py`
+
+#### `backgroundevaluation.py`
 
 Thisis a Python 3 script that makes it easier for the user to assess each fit in a run and to make changes for refitting stars with a bad fit.
 
@@ -27,12 +28,25 @@ This script also produces a shellscript that makes it possible to rerun the star
 ### Tutorial for `backgroundevaluation.py`
 This script has two modes: `eval` and `retry`.
 
-In the terminal, run <code>python3 backgroundevaluation.py eval</code> for the evaluation mode.
+In the terminal, run
+	python3 backgroundevaluation.py eval
+for the evaluation mode.
 
 The script should now ask you questions to which you can reply in the terminal by writing e.g. `y` and press enter.
 
-The first questions are about setting an `idstr` (e.g. `test` or `kepler` or whatever you fancy) and a `run` (the ID number of your Background run, e.g. `0`).
+The first questions revolves around specifying:
+- an `idstr`. This is just en identifier sting used for the naming of files. This could be `test` or `kepler` or whatever you fancy.
+- a `run`. This is the ID number of your Background run. If you have only run one set of models, this is `0`.
+
+
 
 If you wish to interrupt the evaluation, you can do a keyboard interrupt.
 
 If you reenter the same `idstr` and `run` the next time you open a terminal, you get the option to resume.
+
+
+The script also has a different mode, namely `retry`.
+If you run
+	python3 backgroundevaluation.py retry
+this will then ask you to specify `idstr` and `run` just as the evaluation mode.
+However, this mode will make a shellscript for the stars marked to be refitting in the logfile in the next run.
