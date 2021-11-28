@@ -320,7 +320,7 @@ def evaluate():
         if mode == 'w':
             writer.writeheader()
 
-        for star in starlist[0:1]:
+        for star in starlist:
             print('')
             print('Evaluating', star)
             # Navigate to directory
