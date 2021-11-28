@@ -467,13 +467,20 @@ def evaluate():
 
 parser = argparse.ArgumentParser()
 parser.add_argument("mode", choices=['eval', 'retry'])
-if __name__ == "__main__":
-    args = parser.parse_args()
-    if args.mode == "eval":
-        evaluate()
-        print('\n')
-        print('Thanks for now -- bye!')
-    else:
-        make_retryshellscript(idstr=None, run=None)
-        print('\n')
-        print('Thanks for now -- bye!')
+try:
+    if __name__ == "__main__":
+        args = parser.parse_args()
+        if args.mode == "eval":
+            evaluate()
+            print('\n')
+            print('Thanks for now -- bye!')
+        else:
+            make_retryshellscript(idstr=None, run=None)
+            print('\n')
+            print('Thanks for now -- bye!')
+except KeyboardInterrupt:
+    print('Interrupted')
+    try:
+        sys.exit(0)
+    except SystemExit:
+        os._exit(0)
