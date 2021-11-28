@@ -1,19 +1,26 @@
 ## Tools for Background
 These are small tools written to work with [Background](https://github.com/EnricoCorsaro/Background).
+This is very much work in progress, but I will upload them here for version control.
 
-Currently, they work if you place these scripts within your `Background` directory.
+Currently, these scripts should work if you place them within your `Background` directory.
 
-The scripts:
-- `Run\ Background\ for\ multiple\ targets.ipynb` is a Jupyter notebook that allows the user to run multiple runs of Background.
+
+- `Run\ Background\ for\ multiple\ targets.ipynb`
+
+This is a Jupyter notebook that allows the user to run multiple runs of Background.
 
 It iterates over all stars with a `.txt` file in the directory `/data/` in Background.
 Given a csv file with possible guess of numax, this script initialises the background priors.
 It then outputs a shellscript, which the user can run in their terminal and which fits all the stars with their computed set of priors.
 
 This script can also produce overview plots of each fit and make a summary outputs for a better overview of all the fits in the given run.
-- `backgroundevaluation.py` is a Python 3 script that makes it easier for the user to assess each fit in a run and to make changes for refitting stars with a bad fit.
+- `backgroundevaluation.py`
+
+Thisis a Python 3 script that makes it easier for the user to assess each fit in a run and to make changes for refitting stars with a bad fit.
+
 It loops over each star in `/data/` and makes a A4-page pdf of their power spectrum and convergence of the model parameters.
 On a star-to-star basis, the plot is produced and showed to the user and the user can now choose whether to: (a) keep the fit, (b) change the model or model parameters of a fit, or (c) discard the star from the sample alltogether.
+
 This script also produces a shellscript that makes it possible to rerun the stars the user wishes to rerun with a new set of parameters.
 
 
@@ -21,7 +28,11 @@ This script also produces a shellscript that makes it possible to rerun the star
 This script has two modes: `eval` and `retry`.
 
 In the terminal, run <code>python3 backgroundevaluation.py eval</code> for the evaluation mode.
+
 The script should now ask you questions to which you can reply in the terminal by writing e.g. `y` and press enter.
+
 The first questions are about setting an `idstr` (e.g. `test` or `kepler` or whatever you fancy) and a `run` (the ID number of your Background run, e.g. `0`).
+
 If you wish to interrupt the evaluation, you can do a keyboard interrupt.
+
 If you reenter the same `idstr` and `run` the next time you open a terminal, you get the option to resume.
