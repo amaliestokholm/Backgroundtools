@@ -131,45 +131,45 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
             params = None
             numax = 50
 
-            dnu = 0.267 * numax ** 0.760
-            freqbin = freq[1] - freq[0]
-            width = dnu / freqbin
-            win_len= int(width)
-            if win_len % 2 == 0:
-                win_len += 1
-            psd_smth = bg.smooth(psd, window_len=win_len, window='flat')
+        dnu = 0.267 * numax ** 0.760
+        freqbin = freq[1] - freq[0]
+        width = dnu / freqbin
+        win_len= int(width)
+        if win_len % 2 == 0:
+            win_len += 1
+        psd_smth = bg.smooth(psd, window_len=win_len, window='flat')
 
-            ax1.loglog(freq, psd, color='grey')
-            ax1.set_xlim(np.min(freq), np.max(freq))
-            ax1.set_ylim(np.min(psd)*0.1, np.max(psd))
-            ax1.set_xlabel(r'Frequency [$\mu$Hz]')
-            ax1.set_ylabel(r'PSD [ppm$^2$/$\mu$Hz]')
-            ax1.tick_params(width=1.5, length=8, top=True, right=True)
-            ax1.tick_params(which='minor', length=6, top=True, right=True)
+        ax1.loglog(freq, psd, color='grey')
+        ax1.set_xlim(np.min(freq), np.max(freq))
+        ax1.set_ylim(np.min(psd)*0.1, np.max(psd))
+        ax1.set_xlabel(r'Frequency [$\mu$Hz]')
+        ax1.set_ylabel(r'PSD [ppm$^2$/$\mu$Hz]')
+        ax1.tick_params(width=1.5, length=8, top=True, right=True)
+        ax1.tick_params(which='minor', length=6, top=True, right=True)
 
-            ax1.plot(freq, psd_smth, 'k', lw=2)
-            if params is not None:
-                ax1.plot(freq, g, 'm-.', lw=2)
-                ax1.plot(freq, h_color, 'y-.', lw=2)
-                ax1.plot(freq, h_long, 'b-.', lw=2)
-                ax1.plot(freq, h_gran1, 'b-.', lw=2)
-                ax1.plot(freq, h_gran2, 'b-.', lw=2)
-                ax1.plot(freq, h_gran_original, 'b-.', lw=2)
-                ax1.plot(freq, w, 'y-.', lw=2)
-                ax1.plot(freq, b1, 'r-', lw=3)
-                ax1.plot(freq, b2, 'g--', lw=2)
+        ax1.plot(freq, psd_smth, 'k', lw=2)
+        if params is not None:
+            ax1.plot(freq, g, 'm-.', lw=2)
+            ax1.plot(freq, h_color, 'y-.', lw=2)
+            ax1.plot(freq, h_long, 'b-.', lw=2)
+            ax1.plot(freq, h_gran1, 'b-.', lw=2)
+            ax1.plot(freq, h_gran2, 'b-.', lw=2)
+            ax1.plot(freq, h_gran_original, 'b-.', lw=2)
+            ax1.plot(freq, w, 'y-.', lw=2)
+            ax1.plot(freq, b1, 'r-', lw=3)
+            ax1.plot(freq, b2, 'g--', lw=2)
 
-            # Here I just copied the code from `parameter_evolution` but into a subplot
-            for i, pf in enumerate(paramfiles):
-                ax2 = fig.add_subplot(gs[2+ (i // ncols), i % ncols])
-                sampling = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
-                ax2.set_xlim(0, sampling.size)
-                ax2.set_ylim(np.min(sampling),np.max(sampling))
-                ax2.set_xlabel(r'Nested iteration')
-                ax2.set_ylabel(pf.split('_')[1].split('.')[0])
-                ax2.plot(np.arange(sampling.size),sampling,'k', lw=1)
-            plt.tight_layout()
-            pdf.savefig(fig)
+        # Here I just copied the code from `parameter_evolution` but into a subplot
+        for i, pf in enumerate(paramfiles):
+            ax2 = fig.add_subplot(gs[2+ (i // ncols), i % ncols])
+            sampling = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
+            ax2.set_xlim(0, sampling.size)
+            ax2.set_ylim(np.min(sampling),np.max(sampling))
+            ax2.set_xlabel(r'Nested iteration')
+            ax2.set_ylabel(pf.split('_')[1].split('.')[0])
+            ax2.plot(np.arange(sampling.size),sampling,'k', lw=1)
+        plt.tight_layout()
+        pdf.savefig(fig)
     return success, params, model_name
 
 
