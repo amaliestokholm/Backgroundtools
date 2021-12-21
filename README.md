@@ -64,7 +64,7 @@ where XX is the run number, e.g. `01`
 
 The user can then navigate to their ./build/` directory and run the command
 
-	./runBackgroundXX.sh
+	.././runBackgroundXX.sh
 
 and the fits will now run one after the other in the background.
 If an error occurs or the fit fails, the name of the star will be added to a txt-file.
