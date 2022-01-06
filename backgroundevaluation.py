@@ -218,7 +218,7 @@ def make_retryshellscript(idstr=None, run=None, newrun=None):
             for star, model in zip(log[retrymask]['star'], log[retrymask]['model']):
                 prefix = re.split('(\d+)', star)[0]
                 star_id = re.split('(\d+)', star)[1]
-                print(f"f {prefix} {star} {newrun} {model} background_hyperParameters 0.0 0",
+                print(f"f {prefix} {star_id} {newrun} {model} background_hyperParameters 0.0 0",
                       file=f)
 
         print('\n')
@@ -248,6 +248,7 @@ def evaluate():
 
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
+    resultdir = './results/'
 
     evaldir = './evaluation/'
     runevaldir = os.path.join(evaldir, idstr + '_run' + run)
@@ -291,9 +292,16 @@ def evaluate():
 
     # Find all stars in datadir
     starlist = []
+    resultstarlist = []
     for star in os.listdir(datadir):
         if star.endswith('.txt'):
-            starlist.append(star.split('.')[0])
+            star = star.split('.')[0]
+            starlist.append(star)
+        if star in os.listdir(resultdir)[:-1]:
+            resultstarlist.append(star)
+
+    print('Out of %s stars, %s have results' % (len(starlist), len(resultstarlist)))
+    starlist = resultstarlist
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
 
@@ -331,6 +339,9 @@ def evaluate():
                                        'background_parameterSummary.txt')
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
+
+            if not os.path.exists(runresultdir):
+                continue
 
             # Count number of params
             paramfiles = [p for p in os.listdir(runresultdir) if 'parameter0' in p]
