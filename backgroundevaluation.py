@@ -103,33 +103,36 @@ def run_numaxmode(star, model_name, newrun):
 
 def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
                    paramfiles, resultdir, runresultdir):
+    # Here I adjusted code from `background_plot`
+    freq, psd = np.loadtxt(datafile, unpack=True)
+    config = np.loadtxt(computationfile, unpack=True, dtype=str)
+    model_name = config[-2]
+
+    # Plot best-fitting model or initial guess
+    if os.path.isfile(summaryfile):
+        print('Success!')
+        success = True
+        params = np.loadtxt(summaryfile, usecols=(1,))
+        numax = params[-2]
+        bgf = bg.background_function(params,
+                                     freq,
+                                     model_name,
+                                     star_dir=resultdir + '/')
+        b1, b2, h_long, h_gran1, h_gran2, h_gran_original, g, w, h_color = bgf
+    else:
+        print('Run failed')
+        success = False
+        params = None
+        numax = 50
+
+    if os.path.isfile(pdffigure):
+        return success, params, model_name
+
     with PdfPages(pdffigure) as pdf:
         fig = plt.figure(figsize=(8.27, 11.7)) # A4 format-ish
         ncols = 3
         gs = fig.add_gridspec(6, ncols)
         ax1 = fig.add_subplot(gs[0:2, :])
-
-        # Here I adjusted code from `background_plot`
-        freq, psd = np.loadtxt(datafile, unpack=True)
-        config = np.loadtxt(computationfile, unpack=True, dtype=str)
-        model_name = config[-2]
-
-        # Plot best-fitting model or initial guess
-        if os.path.isfile(summaryfile):
-            print('Success!')
-            success = True
-            params = np.loadtxt(summaryfile, usecols=(1,))
-            numax = params[-2]
-            bgf = bg.background_function(params,
-                                         freq,
-                                         model_name,
-                                         star_dir=resultdir + '/')
-            b1, b2, h_long, h_gran1, h_gran2, h_gran_original, g, w, h_color = bgf
-        else:
-            print('Run failed')
-            success = False
-            params = None
-            numax = 50
 
         dnu = 0.267 * numax ** 0.760
         freqbin = freq[1] - freq[0]
@@ -173,7 +176,7 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     return success, params, model_name
 
 
-def make_retryshellscript(idstr=None, run=None, newrun=None):
+def make_retryshellscript(idstr=None, run=None, newrun=None, chunksize=300):
     # Read from logfile in order to properly handle resumed evaluations
     if idstr is None or run is None:
         print('Welcome to Background Evaluation')
@@ -192,12 +195,11 @@ def make_retryshellscript(idstr=None, run=None, newrun=None):
         if len(newrun) < 2:
             newrun = '0' + newrun
 
-    retryshellscript = 'runBackground' + newrun + '.sh'
 
     today = date.today().strftime('%Y%m%d')
     evaldir = './evaluation/'
-    logfile = os.path.join(evaldir, today + '_' + idstr + 'run_' + run + '.csv')
-    errorfile = os.path.join(evaldir, 'errors_' + run + '.txt')
+    logfile = os.path.join(evaldir, idstr + 'run_' + run + '.csv')
+    errorfile = 'errors_' + idstr + '_' + newrun + '.txt'
     if not os.path.isfile(logfile):
         print('Log file does not exist, exiting')
         return
@@ -205,21 +207,26 @@ def make_retryshellscript(idstr=None, run=None, newrun=None):
     log = pd.read_csv(logfile, delimiter='\t')
     retrymask = ([d in retryinput for d in log['decision']])
 
+    stars = log[retrymask]['star']
+    models = log[retrymask]['model']
     if np.sum(retrymask) > 0:
-        with open(retryshellscript, "w") as f:
-            print("#!/bin/bash", file=f)
-            print("""
-            f() {
-                    if ! ./background "$@" ; then
-                            echo "[`date`] $@" >> %s
-                    fi
-            }""" % errorfile, file=f)
-            print('', file=f)
-            for star, model in zip(log[retrymask]['star'], log[retrymask]['model']):
-                prefix = re.split('(\d+)', star)[0]
-                star_id = re.split('(\d+)', star)[1]
-                print(f"f {prefix} {star_id} {newrun} {model} background_hyperParameters 0.0 0",
-                      file=f)
+        for i in range(0, len(log[retrymask]['star']), chunksize):
+            retryshellscript = 'runBackground' + newrun + '_' + str(i) + '.sh'
+            with open(retryshellscript, "w") as f:
+                print("#!/bin/bash", file=f)
+                print("""
+                f() {
+                        if ! ./background "$@" ; then
+                                echo "[`date`] $@" >> %s
+                        fi
+                }""" % errorfile, file=f)
+                print('', file=f)
+                for star, model in zip(stars[i:i+chunksize], models[i:i+chunksize]):
+                    prefix = re.split('(\d+)', star)[0]
+                    star_id = re.split('(\d+)', star)[1]
+                    assert model in backgroundmodels
+                    print(f"f {prefix} {star_id} {newrun} {model} background_hyperParameters 0.0 0",
+                          file=f)
 
         print('\n')
         print('A new shell script for rerunning fits has been made and is called', retryshellscript)
@@ -233,6 +240,50 @@ def make_retryshellscript(idstr=None, run=None, newrun=None):
         print('the fit will be appended to the file', errorfile)
     else:
         print('No stars marked `retry` found in logfile')
+
+
+def do_eval(idstr=None, run=None):
+    """
+    This functions takes the actions made by evaluate() and performs them.
+    This allows for undo's and take back's in evaluate().
+    """
+    if idstr is None or run is None:
+        print('Please define an id-string')
+        idstr = sanitised_input(type_=str)
+
+        print('Please define the run-string (e.g. 00 or 01)')
+        run = sanitised_input(type_=int)
+        run = str(run)
+        if len(run) < 2:
+            run = '0' + run
+
+    today = date.today().strftime('%Y%m%d')
+    datadir = './data/'
+    resultdir = './results/'
+
+    evaldir = './evaluation/'
+    runevaldir = os.path.join(evaldir, idstr + '_run' + run)
+    goodevaldir = os.path.join(runevaldir, 'goodfits')
+    logfile = os.path.join(evaldir, idstr + 'run_' + run + '.csv')
+    errorfile = os.path.join(evaldir, 'errors_' + run + '.txt')
+
+    newrun = str(int(run)+1)
+    if len(newrun) < 2:
+        newrun = '0' + newrun
+
+    df = pd.read_csv(logfile, delimiter='\t')
+
+    goodmask = (df['decision'] in goodinput)
+    retrymask = (df['decision'] in retryinput)
+    discardmask = (df['decision'] in discardinput)
+
+    print('For the %s stars with good evaluations, their fits will be copied to %s' % (
+        np.sum(goodmask), goodevaldir))
+    for star in df['star'][goodmask]:
+        resultdir = os.path.join('./results/' + star)
+        runresultdir = os.path.join(resultdir, run)
+        newrunresultdir = os.path.join(resultdir, run)
+        copy_tree(runresultdir, os.path.join(goodevaldir, star))
 
 
 def evaluate():
@@ -253,8 +304,7 @@ def evaluate():
     evaldir = './evaluation/'
     runevaldir = os.path.join(evaldir, idstr + '_run' + run)
     goodevaldir = os.path.join(runevaldir, 'goodfits')
-    discardfile = os.path.join(runevaldir, 'discardstars.txt')
-    logfile = os.path.join(evaldir, today + '_' + idstr + 'run_' + run + '.csv')
+    logfile = os.path.join(evaldir, idstr + 'run_' + run + '.csv')
     errorfile = os.path.join(evaldir, 'errors_' + run + '.txt')
 
     newrun = str(int(run)+1)
@@ -284,40 +334,33 @@ def evaluate():
                 resume = False
                 shutil.rmtree(goodevaldir, ignore_errors=True)
                 os.mkdir(goodevaldir)
-                if os.path.isfile(discardfile):
-                    os.remove(discardfile)
             else:
                 print('Evaluation is resumed')
                 resume = True
 
     # Find all stars in datadir
     starlist = []
-    resultstarlist = []
     for star in os.listdir(datadir):
         if star.endswith('.txt'):
             star = star.split('.')[0]
+            datafile = os.path.join('./data/' + star + '.txt')
+            resultdir = os.path.join('./results/' + star)
+            runresultdir = os.path.join(resultdir, run)
+            computationfile = os.path.join(runresultdir,
+                                           'background_computationParameters.txt')
+            if not os.path.exists(computationfile):
+                continue
             starlist.append(star)
-        if star in os.listdir(resultdir)[:-1]:
-            resultstarlist.append(star)
-
-    print('Out of %s stars, %s have results' % (len(starlist), len(resultstarlist)))
-    starlist = resultstarlist
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
 
     if resume:
         mode = 'a'
-        if os.path.isfile(discardfile):
-            discardstarlist = np.loadtxt(discardfile, dtype=str, unpack=True)
-
-            for d in np.atleast_1d(discardstarlist):
-                print('Star is discarded:', d)
-                assert d in starlist
-                starlist.remove(d)
-        for g in os.listdir(goodevaldir):
-            assert g in starlist
-            print('Star is already evaluated:', g)
-            starlist.remove(g)
+        df = pd.read_csv(logfile, delimiter='\t')
+        for star in df.star:
+            assert star in starlist, star
+            print('Star is already evaluated:', star)
+            starlist.remove(star)
     else:
         mode = 'w'
         print('Iterating over all stars in', datadir)
@@ -328,20 +371,20 @@ def evaluate():
         if mode == 'w':
             writer.writeheader()
 
-        for star in starlist:
+        for i, star in enumerate(starlist):
             print('')
             print('Evaluating', star)
+            print('%s out of %s' % (i, len(starlist)))
             # Navigate to directory
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
             runresultdir = os.path.join(resultdir, run)
+            newrunresultdir = os.path.join(resultdir, run)
+
             summaryfile = os.path.join(runresultdir,
                                        'background_parameterSummary.txt')
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
-
-            if not os.path.exists(runresultdir):
-                continue
 
             # Count number of params
             paramfiles = [p for p in os.listdir(runresultdir) if 'parameter0' in p]
@@ -379,23 +422,29 @@ def evaluate():
 
             if success and usereval in goodinput:
                 print('Evaluation: Good fit')
-                print('Fitting directory is copied to', goodevaldir)
-                copy_tree(runresultdir, os.path.join(goodevaldir, star))
             elif usereval in retryinput:
                 print('Evalutation: Retry fit')
                 newhyperparams = os.path.join(resultdir,
                                               'background_hyperParameters_' + newrun + '.txt')
-                print('Would you like to keep the model? y/n')
                 print('The current model is', model_name)
+                print('Would you like to keep the model? y/n')
                 usermodelchoice = sanitised_input(type_=str, range_=yninput)
                 if usermodelchoice in noinput:
                     while True:
                         print('Which model would you like to change to?')
                         print('Choose one in', backgroundmodels)
                         usermodel = sanitised_input(type_=str)
-                        if usermodel not in backgroundmodels:
+                        if usermodel not in backgroundmodels+['1', '2']:
                             print('Choose a model in', backgroundmodels)
                             continue
+                        elif usermodel == '1':
+                            model_name = 'OneHarvey'
+                            run_numaxmode(star, model_name, newrun)
+                            break
+                        elif usermodel == '2':
+                            model_name = 'TwoHarvey'
+                            run_numaxmode(star, model_name, newrun)
+                            break
                         else:
                             model_name = usermodel
                             run_numaxmode(star, model_name, newrun)
@@ -406,6 +455,8 @@ def evaluate():
                     if userretrymode in numaxmode:
                         run_numaxmode(star, model_name, newrun)
                     else:
+                        newrundir = os.path.join(resultdir, str(newrun))
+                        os.mkdir(newrundir)
                         print('How would you like to update the parameters?')
                         hyperparamsfile = os.path.join(resultdir,
                                                        'background_hyperParameters_' + run + '.txt')
@@ -451,16 +502,13 @@ def evaluate():
                         print('New hyperparameters can be found in', newhyperparamsfile)
             elif usereval in discardinput:
                 print('Star is discarded')
-                print('Star has been added to the discard list', discardfile)
-                with open(discardfile, 'a') as dl:
-                    dl.write(star + '\n')
             else:
                 # This should never run when fullinput only has three options
                 print('Input not recognised, try input in ',
                       goodinput + discardinput + retryinput)
 
             print('Do you want to add any notes? y/n')
-            usernotes = sanitised_input()
+            usernotes = sanitised_input(range_=yninput)
             if usernotes in goodinput:
                 print('Write your notes here:')
                 usernotes = sanitised_input()
@@ -477,7 +525,7 @@ def evaluate():
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("mode", choices=['eval', 'retry'])
+parser.add_argument("mode", choices=['eval', 'do', 'retry'])
 try:
     if __name__ == "__main__":
         args = parser.parse_args()
