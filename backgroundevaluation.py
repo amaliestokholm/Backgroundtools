@@ -242,21 +242,27 @@ def make_retryshellscript(idstr=None, run=None, newrun=None, chunksize=300):
         print('No stars marked `retry` found in logfile')
 
 
-def do_eval(idstr=None, run=None):
+def do_eval_main():
     """
     This functions takes the actions made by evaluate() and performs them.
     This allows for undo's and take back's in evaluate().
     """
-    if idstr is None or run is None:
-        print('Please define an id-string')
-        idstr = sanitised_input(type_=str)
+    print('Please define an id-string')
+    idstr = sanitised_input(type_=str)
 
-        print('Please define the run-string (e.g. 00 or 01)')
-        run = sanitised_input(type_=int)
-        run = str(run)
-        if len(run) < 2:
-            run = '0' + run
+    print('Please define the run-string (e.g. 00 or 01)')
+    run = sanitised_input(type_=int)
+    run = str(run)
+    if len(run) < 2:
+        run = '0' + run
+    do_eval(idstr, run)
 
+
+def do_eval(idstr, run):
+    """
+    This functions takes the actions made by evaluate() and performs them.
+    This allows for undo's and take back's in evaluate().
+    """
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
     resultdir = './results/'
