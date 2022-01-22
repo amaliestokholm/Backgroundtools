@@ -2,17 +2,18 @@
 # Evaluate background fits for all stars in ./data/
 # amalie
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+import argparse
+import csv
+import json
 import os
 import re
-import sys
-import csv
 import shutil
+import sys
+import webbrowser
+from datetime import date, datetime
+
 import numpy as np
 import pandas as pd
-from datetime import date, datetime
-#import subprocess
-import webbrowser
-import argparse
 
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
@@ -27,7 +28,7 @@ import background as bg
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Initialise
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-fieldnames = ['date', 'star', 'decision', 'notes', 'model', 'params']
+fieldnames = ['date', 'star', 'model', 'decision', 'notes', 'params']
 
 backgroundmodels = ['FlatNoGaussian', 'Flat', 'Original',
                     'OneHarveyNoGaussian', 'TwoHarveyNoGaussian',
@@ -85,11 +86,11 @@ def sanitised_input(type_=None, min_=None, max_=None, range_=None):
 
 
 def run_numaxmode(star, model_name, newrun):
-    prefix = re.split('(\d+)', star)[0]
-    star_id = re.split('(\d+)', star)[1]
-
     print('What is your estimate of numax?')
     usernumax = sanitised_input(type_=float)
+
+    prefix = re.split('(\d+)', star)[0]
+    star_id = re.split('(\d+)', star)[1]
 
     bg.set_background_priors(
         catalog_id=prefix,
@@ -176,20 +177,8 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     return success, params, model_name
 
 
-def make_retryshellscript(idstr=None, run=None, newrun=None, chunksize=300):
+def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
     # Read from logfile in order to properly handle resumed evaluations
-    if idstr is None or run is None:
-        print('Welcome to Background Evaluation')
-        print('Here we will make a shell script for rerunning failed fits')
-        print('Please define an id-string')
-        idstr = sanitised_input(type_=str)
-
-        print('Please define the run-string (e.g. 00 or 01)')
-        run = sanitised_input(type_=int)
-        run = str(run)
-        if len(run) < 2:
-            run = '0' + run
-
     if newrun is None:
         newrun = str(int(run)+1)
         if len(newrun) < 2:
@@ -242,20 +231,18 @@ def make_retryshellscript(idstr=None, run=None, newrun=None, chunksize=300):
         print('No stars marked `retry` found in logfile')
 
 
-def do_eval_main():
-    """
-    This functions takes the actions made by evaluate() and performs them.
-    This allows for undo's and take back's in evaluate().
-    """
-    print('Please define an id-string')
-    idstr = sanitised_input(type_=str)
+def get_idstr_run(idstr=None, run=None):
+    if idstr is None:
+        print('Please define an id-string')
+        idstr = sanitised_input(type_=str)
 
-    print('Please define the run-string (e.g. 00 or 01)')
-    run = sanitised_input(type_=int)
-    run = str(run)
+    if run is None:
+        print('Please define the run-string (e.g. 00 or 01)')
+        run = sanitised_input(type_=int)
+        run = str(run)
     if len(run) < 2:
         run = '0' + run
-    do_eval(idstr, run)
+    return idstr, run
 
 
 def do_eval(idstr, run):
@@ -279,30 +266,51 @@ def do_eval(idstr, run):
 
     df = pd.read_csv(logfile, delimiter='\t')
 
-    goodmask = (df['decision'] in goodinput)
-    retrymask = (df['decision'] in retryinput)
-    discardmask = (df['decision'] in discardinput)
+    goodmask = ([d in goodinput for d in df['decision']])
+    retrymask = ([d in retryinput for d in df['decision']])
 
     print('For the %s stars with good evaluations, their fits will be copied to %s' % (
         np.sum(goodmask), goodevaldir))
-    for star in df['star'][goodmask]:
+    for star in df.star[goodmask]:
         resultdir = os.path.join('./results/' + star)
         runresultdir = os.path.join(resultdir, run)
         newrunresultdir = os.path.join(resultdir, run)
         copy_tree(runresultdir, os.path.join(goodevaldir, star))
 
+    for star, params_str in zip(df.star[retrymask], df.params[retrymask]):
+        resultdir = os.path.join('./results/' + star)
+        params = json.loads(params_str)
+        new_model_name = params["model"]
+        if "numax" in params:
+            run_numaxmode(star, new_model_name, newrun)
+            prefix = re.split('(\d+)', star)[0]
+            star_id = re.split('(\d+)', star)[1]
+            bg.set_background_priors(
+                catalog_id=prefix,
+                star_id=star_id,
+                numax=usernumax,
+                model_name=model_name,
+                dir_flag=int(newrun))
+            print('set_background_priors has made a new hyperparameter file of run',
+                  newrun)
+        else:
+            new_params = np.asarray(params["params"])
 
-def evaluate():
-    print('Welcome to Background Evaluation')
-    print('Please define an id-string')
-    idstr = sanitised_input(type_=str)
+            header = """
+            Hyper parameters used for setting up uniform priors.
+            Each line corresponds to a different free parameter (coordinate).
+            Column #1: Minima (lower boundaries)
+            Column #2: Maxima (upper boundaries)
+            """
+            newrundir = os.path.join(resultdir, str(newrun))
+            os.mkdir(newrundir)
+            newhyperparamsfile = os.path.join(resultdir,
+                                              'background_hyperParameters_' + newrun + '.txt')
+            np.savetxt(newhyperparamsfile, new_params, fmt='%.3f', header=header)
+            print('New hyperparameters can be found in', newhyperparamsfile)
 
-    print('Please define the run-string (e.g. 00 or 01)')
-    run = sanitised_input(type_=int)
-    run = str(run)
-    if len(run) < 2:
-        run = '0' + run
 
+def evaluate(idstr, run):
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
     resultdir = './results/'
@@ -312,10 +320,6 @@ def evaluate():
     goodevaldir = os.path.join(runevaldir, 'goodfits')
     logfile = os.path.join(evaldir, idstr + 'run_' + run + '.csv')
     errorfile = os.path.join(evaldir, 'errors_' + run + '.txt')
-
-    newrun = str(int(run)+1)
-    if len(newrun) < 2:
-        newrun = '0' + newrun
 
     if not os.path.exists(evaldir):
         print('New evaluation directory created')
@@ -426,15 +430,23 @@ def evaluate():
             else:
                 usereval = sanitised_input(range_=retryinput + discardinput)
 
+            log_row = {
+                'date': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                'star': star,
+                'model': model_name,
+                'decision': usereval,
+            }
+
             if success and usereval in goodinput:
                 print('Evaluation: Good fit')
+                log_row['params'] = "None"
             elif usereval in retryinput:
                 print('Evalutation: Retry fit')
-                newhyperparams = os.path.join(resultdir,
-                                              'background_hyperParameters_' + newrun + '.txt')
                 print('The current model is', model_name)
                 print('Would you like to keep the model? y/n')
                 usermodelchoice = sanitised_input(type_=str, range_=yninput)
+                new_model_name = None
+
                 if usermodelchoice in noinput:
                     while True:
                         print('Which model would you like to change to?')
@@ -444,108 +456,103 @@ def evaluate():
                             print('Choose a model in', backgroundmodels)
                             continue
                         elif usermodel == '1':
-                            model_name = 'OneHarvey'
-                            run_numaxmode(star, model_name, newrun)
-                            break
+                            new_model_name = 'OneHarvey'
                         elif usermodel == '2':
-                            model_name = 'TwoHarvey'
-                            run_numaxmode(star, model_name, newrun)
-                            break
+                            new_model_name = 'TwoHarvey'
                         else:
-                            model_name = usermodel
-                            run_numaxmode(star, model_name, newrun)
-                            break
+                            new_model_name = usermodel
+                        break
                 else:
                     print('Would you like to change the parameters manually (`m`) or based on a numax (`n`)?')
                     userretrymode = sanitised_input(range_=manualmode + numaxmode)
                     if userretrymode in numaxmode:
-                        run_numaxmode(star, model_name, newrun)
-                    else:
-                        newrundir = os.path.join(resultdir, str(newrun))
-                        os.mkdir(newrundir)
-                        print('How would you like to update the parameters?')
-                        hyperparamsfile = os.path.join(resultdir,
-                                                       'background_hyperParameters_' + run + '.txt')
-                        newhyperparamsfile = os.path.join(resultdir,
-                                                          'background_hyperParameters_' + newrun + '.txt')
-                        hyperparams = np.loadtxt(hyperparamsfile, skiprows=6, unpack=True).T
-                        params = []
-                        for i, line in enumerate(hyperparams):
-                            print(f'For parameter {i}:')
-                            print('The current range is:')
+                        new_model_name = model_name
+
+                if new_model_name is not None:
+                    # Either we keep the model and run based on numax,
+                    # or we change to another model.
+                    print('What is your estimate of numax?')
+                    usernumax = sanitised_input(type_=float)
+                    log_row['params'] = json.dumps({"model": new_model_name, "numax": usernumax})
+                else:
+                    # Change the parameters manually
+
+                    print('How would you like to update the parameters?')
+                    hyperparamsfile = os.path.join(resultdir,
+                                                   'background_hyperParameters_' + run + '.txt')
+                    hyperparams = np.loadtxt(hyperparamsfile, skiprows=6, unpack=True).T
+                    new_params = []
+                    for i, line in enumerate(hyperparams):
+                        print(f'For parameter {i}:')
+                        print('The current range is:')
+                        print(line)
+                        print('Do you want to change it? y/n')
+                        userchangeparam = sanitised_input(range_=yninput)
+                        if userchangeparam in goodinput:
+                            while True:
+                                print('What do you want to change it to?')
+                                print('New minimum:')
+                                usernewparammin = sanitised_input(type_=float)
+                                print('New maximum:')
+                                usernewparammax = sanitised_input(type_=float)
+                                if usernewparammin > usernewparammax:
+                                    print('Minimum must be less than maximum!')
+                                    continue
+                                else:
+                                    newline = [float(usernewparammin),
+                                               float(usernewparammax)]
+                                    new_params.extend(newline)
+                                    break
+                        else:
+                            print('We keep it')
                             print(line)
-                            print('Do you want to change it? y/n')
-                            userchangeparam = sanitised_input(range_=yninput)
-                            if userchangeparam in goodinput:
-                                while True:
-                                    print('What do you want to change it to?')
-                                    print('New minimum:')
-                                    usernewparammin = sanitised_input(type_=float)
-                                    print('New maximum:')
-                                    usernewparammax = sanitised_input(type_=float)
-                                    if usernewparammin > usernewparammax:
-                                        print('Minimum must be less than maximum!')
-                                        continue
-                                    else:
-                                        newline = [float(usernewparammin),
-                                                   float(usernewparammax)]
-                                        params.extend(newline)
-                                        break
-                            else:
-                                print('We keep it')
-                                print(line)
-                                params.extend([line[0].astype(float),
-                                               line[1].astype(float)])
-                        header = """
-                        Hyper parameters used for setting up uniform priors.
-                        Each line corresponds to a different free parameter (coordinate).
-                        Column #1: Minima (lower boundaries)
-                        Column #2: Maxima (upper boundaries)
-                        """
-                        params = np.asarray(params)
-                        params = np.reshape(params, ((len(params) // 2) , 2))
-                        np.savetxt(newhyperparamsfile, params, fmt='%.3f', header=header)
-                        print('New hyperparameters can be found in', newhyperparamsfile)
+                            new_params.extend([line[0].astype(float),
+                                           line[1].astype(float)])
+                    new_params = np.asarray(new_params)
+                    new_params = np.reshape(new_params, ((len(new_params) // 2) , 2))
+                    log_row["params"] = json.dumps({"model": model_name, "params": new_params.tolist()})
             elif usereval in discardinput:
+                log_row['decision'] = "discard"
+                log_row['params'] = "None"
                 print('Star is discarded')
             else:
                 # This should never run when fullinput only has three options
-                print('Input not recognised, try input in ',
-                      goodinput + discardinput + retryinput)
+                raise Exception('Input not recognised, try input in %s' % (goodinput + discardinput + retryinput,))
 
             print('Do you want to add any notes? y/n')
             usernotes = sanitised_input(range_=yninput)
             if usernotes in goodinput:
                 print('Write your notes here:')
-                usernotes = sanitised_input()
+                log_row["notes"] = sanitised_input()
             else:
-                usernotes = "None"
+                log_row["notes"] = "None"
 
-            writer.writerow({'date': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-                             'star': star,
-                             'decision': usereval,
-                             'notes': usernotes,
-                             'model': model_name,
-                             'params': params})
-    make_retryshellscript(idstr=idstr, run=run)
+            writer.writerow(log_row)
+
+    print("Want to perform the actions from the evaluation (copy good + prepare reruns)?")
+    print("If you say 'n' here, you can always run this script later with 'do' and 'retry'.")
+    if sanitised_input(range_=yninput) in goodinput:
+        do_eval(idstr, run)
+        make_retryshellscript(idstr, run)
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("mode", choices=['eval', 'do', 'retry'])
-try:
-    if __name__ == "__main__":
-        args = parser.parse_args()
-        if args.mode == "eval":
-            evaluate()
-            print('\n')
-            print('Thanks for now -- bye!')
-        else:
-            make_retryshellscript(idstr=None, run=None)
-            print('\n')
-            print('Thanks for now -- bye!')
-except KeyboardInterrupt:
-    print('Interrupted')
-    try:
-        sys.exit(0)
-    except SystemExit:
-        os._exit(0)
+parser.add_argument("id", nargs="?")
+parser.add_argument("run", nargs="?")
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    print('Welcome to Background Evaluation')
+    idstr, run = get_idstr_run(args.id, args.run)
+    if args.mode == "eval":
+        evaluate(idstr, run)
+    elif args.mode == "do":
+        do_eval(idstr, run)
+    elif args.mode == "retry":
+        make_retryshellscript(idstr, run)
+    else:
+        raise Exception("Unknown mode")
+    print('\n')
+    print('Thanks for now -- bye!')
