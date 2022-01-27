@@ -196,8 +196,6 @@ def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
     log = pd.read_csv(logfile, delimiter='\t')
     retrymask = ([d in retryinput for d in log['decision']])
 
-    stars = log[retrymask]['star']
-    models = log[retrymask]['model']
     if np.sum(retrymask) > 0:
         for i in range(0, len(log[retrymask]['star']), chunksize):
             retryshellscript = 'runBackground' + newrun + '_' + str(i) + '.sh'
@@ -210,9 +208,13 @@ def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
                         fi
                 }""" % errorfile, file=f)
                 print('', file=f)
-                for star, model in zip(stars[i:i+chunksize], models[i:i+chunksize]):
+                for star, params_str in zip(log.star[retrymask][i:i+chunksize],
+                                            log.params[retrymask][i:i+chunksize]):
                     prefix = re.split('(\d+)', star)[0]
                     star_id = re.split('(\d+)', star)[1]
+                    params = json.loads(params_str)
+                    assert "model" in params
+                    model = params["model"]
                     assert model in backgroundmodels
                     print(f"f {prefix} {star_id} {newrun} {model} background_hyperParameters 0.0 0",
                           file=f)
@@ -282,14 +284,14 @@ def do_eval(idstr, run):
         params = json.loads(params_str)
         new_model_name = params["model"]
         if "numax" in params:
-            run_numaxmode(star, new_model_name, newrun)
+            usernumax = params["numax"]
             prefix = re.split('(\d+)', star)[0]
             star_id = re.split('(\d+)', star)[1]
             bg.set_background_priors(
                 catalog_id=prefix,
                 star_id=star_id,
                 numax=usernumax,
-                model_name=model_name,
+                model_name=new_model_name,
                 dir_flag=int(newrun))
             print('set_background_priors has made a new hyperparameter file of run',
                   newrun)
@@ -303,7 +305,8 @@ def do_eval(idstr, run):
             Column #2: Maxima (upper boundaries)
             """
             newrundir = os.path.join(resultdir, str(newrun))
-            os.mkdir(newrundir)
+            if not os.path.exists(newrundir):
+                os.mkdir(newrundir)
             newhyperparamsfile = os.path.join(resultdir,
                                               'background_hyperParameters_' + newrun + '.txt')
             np.savetxt(newhyperparamsfile, new_params, fmt='%.3f', header=header)
