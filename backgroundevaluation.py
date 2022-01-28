@@ -198,7 +198,7 @@ def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
 
     if np.sum(retrymask) > 0:
         for i in range(0, len(log[retrymask]['star']), chunksize):
-            retryshellscript = 'runBackground' + newrun + '_' + str(i) + '.sh'
+            retryshellscript = 'runBackground' + idstr + '_' + newrun + '_' + str(i) + '.sh'
             with open(retryshellscript, "w") as f:
                 print("#!/bin/bash", file=f)
                 print("""
