@@ -517,6 +517,7 @@ def evaluate(idstr, run):
 
     # Find all stars in datadir
     starlist = []
+    runresultdirs = []
     for star in os.listdir(datadir):
         if star.endswith('.txt'):
             star = star.split('.')[0]
@@ -528,6 +529,7 @@ def evaluate(idstr, run):
             if not os.path.exists(computationfile):
                 continue
             starlist.append(star)
+            runresultdirs.append(runresultdir)
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
 
@@ -548,7 +550,7 @@ def evaluate(idstr, run):
         if mode == 'w':
             writer.writeheader()
 
-        for i, star in enumerate(starlist):
+        for i, (star, runresultdir) in enumerate(zip(starlist, runresultdirs)):
             print('')
             print('Evaluating', star)
             print('%s out of %s' % (i, len(starlist)))
@@ -556,7 +558,6 @@ def evaluate(idstr, run):
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
 
-            runresultdir = get_run_based_on_mode(resultdir, run)
             summaryfile = os.path.join(runresultdir, successfile)
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
