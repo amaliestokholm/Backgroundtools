@@ -47,8 +47,11 @@ fullinput = goodinput + discardinput + retryinput
 yninput = goodinput + noinput
 newestrun = 'newest'
 newestconvrun = 'newconv'
+altmodes = [betteroftwo, newestrun, newestconvrun]
+etteroftwo = 'better'
 
 successfile = 'background_parameterSummary.txt'
+statsfile = 'stats.csv'
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Modules
@@ -102,54 +105,6 @@ def run_numaxmode(star, model_name, newrun):
         dir_flag=int(newrun))
     print('set_background_priors has made a new hyperparameter file of run',
           newrun)
-
-
-def smooth(x, window_len=11, window='hanning'):
-    """
-    Function from https://scipy-cookbook.readthedocs.io/items/SignalSmooth.html
-
-    smooth the data using a window with requested size.
-
-    This method is based on the convolution of a scaled window with the signal.
-    The signal is prepared by introducing reflected copies of the signal
-    (with the window size) in both ends so that transient parts are minimized
-    in the begining and end part of the output signal.
-
-    input:
-        x: the input signal
-        window_len: the dimension of the smoothing window; should be an odd integer
-        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
-        flat window will produce a moving average smoothing.
-
-    output:
-        the smoothed signal
-
-    example:
-        t=linspace(-2,2,0.1)
-        x=sin(t)+randn(len(t))*0.1
-        y=smooth(x)
-
-     """
-     if x.ndim != 1:
-         raise ValueError, "smooth only accepts 1 dimension arrays."
-
-     if x.size < window_len:
-         raise ValueError, "Input vector needs to be bigger than window size."
-
-     if window_len < 3:
-         return x
-
-     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
-         raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
-
-     s = np.r_[x[window_len-1:0:-1], x, x[-2:-window_len-1:-1]]
-     if window == 'flat':
-             w = np.ones(window_len, 'd')
-     else:
-         w = eval('np.' + window + '(window_len)')
-
-     y = np.convolve(w / w.sum(), s, mode='valid')
-     return y
 
 
 def compute_oc(freq, psd_smth, b2, win_len, numax):
@@ -256,13 +211,13 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
 
         if params is not None:
             stats = compute_oc(freq, psd_smth, b2, win_len, numax)
-            statsfile = os.path.join(resultdir, 'fit.csv')
-            np.savetxt(statsfile, stats, delimiter=',')
+            sf = os.path.join(runresultdir, statsfile)
+            np.savetxt(sf, stats, delimiter=',')
         else:
             stats = None
 
     plt.close()
-    return success, params, model_name
+    return success, params, model_name, stats
 
 
 def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
@@ -328,16 +283,19 @@ def get_idstr_run(idstr=None, run=None):
     if run is None:
         print('Which runs do you want to use?')
         print('If you want the newest run, type n')
-        print('If you want the most recent converged run and if no such exists then the newest, type c')
+        print('If you want the most recent converged run (if no such exists, the newest), type c')
+        print('If you want the run with the highest oc of the latest two converged run (or newest if no convergence), type b')
         print('If you want the same run for all stars, type s')
-        run = sanitised_input(type_=str, range=['n', 'c', 's'])
-    if run=='n':
+        run = sanitised_input(type_=str, range=['n', 'c', 'b', 's'])
+    if run == 'n':
         # Newest run
         run = newestrun
-    elif run=='c':
+    elif run == 'c':
         # Newest converged
         run = newestconvrun
-    elif run=='s':
+    elif run == 'b':
+        run = betteroftwo
+    elif run == 's':
         print('Please define the run-string (e.g. 00 or 01)')
         run = sanitised_input(type_=int)
         run = str(run)
@@ -360,7 +318,7 @@ def do_eval(idstr, run):
     goodevaldir = os.path.join(runevaldir, 'goodfits')
     logfile = os.path.join(evaldir, idstr + 'run_' + run + '.csv')
 
-    if run not in [newestrun, newestconvrun]:
+    if run not in altmodes:
         newrun = str(int(run)+1)
     else:
         print('Please define the new run-string for the next run (e.g. 02 or 03)')
@@ -415,6 +373,110 @@ def do_eval(idstr, run):
             print('New hyperparameters can be found in', newhyperparamsfile)
 
 
+def get_run_based_on_mode(resultdir, run):
+    if run == newestrun:
+        # Check date
+        # https://stackoverflow.com/questions/2014554/find-the-newest-folder-in-a-directory-in-python
+        runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                           key=os.path.getmtime)
+    elif run == newestconvrun:
+        # Check date and if successfile is there
+        subdirs = [d for d in os.listdir(resultdir) if os.path.isdir(d)]
+        runresultdir = None
+        while len(subdirs) > 0:
+            r = max(subdirs, key=os.path.getmtime)
+            if file in r:
+                runresultdir = r
+                break
+            else:
+                # remove dir from subdirs
+                subdirs = subdirs.remove(r)
+        if runresultdir is None:
+            # Take the newest run if no runs with convergence
+            runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                               key=os.path.getmtime)
+    elif run == betteroftwo:
+        # Check the two newest runs and check which has the better oc
+        # If no convergence, just the newest
+        nocompare = 2
+        subdirs = [d for d in os.listdir(resultdir) if os.path.isdir(d)]
+        subdirs.sort(key=lambda x:os.path.getmtime(x))
+        # Get the latest 2
+        if len(subdirs) >= nocompare:
+            subdirs = subdirs[-nocompare:]
+
+            runresultdir = None
+            successs = []
+            ocs = []
+
+            for i in range(nocompare):
+                # If at least two exist, how many converged?
+                sd = os.path.join(resultdir, subdirs[i])
+                summaryfile = os.path.join(sd, successfile)
+                if os.path.isfile(summaryfile):
+                    successs.append(subdirs[i])
+
+            if len(successs) == 0:
+                # If none, take the newest
+                runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                                   key=os.path.getmtime)
+            elif len(successs) == 1:
+                # If one, take that one
+                runresultdir = successs[0]
+            elif len(successs) > 1:
+                # If more, get oc of all runs
+                # Compute if they do not exist
+                # Choose the iteration of the lowest oc
+                for sd in successs:
+                    sf = os.path.join(sd, statsfile)
+                    if os.path.exists(sf):
+                        stats = np.loadtxt(sf, delimiter=',')
+                        ocs.append(stats[-1])
+                    else:
+                        # Navigate to directory
+                        star = resultdir.split('/')[-1]
+                        datafile = os.path.join('./data/' + star + '.txt')
+
+                        summaryfile = os.path.join(sd, successfile)
+                        computationfile = os.path.join(sd,
+                                                       'background_computationParameters.txt')
+
+                        # Count number of params
+                        paramfiles = [p for p in os.listdir(sd) if 'parameter0' in p]
+
+                        # Human-sort list
+                        #https://stackoverflow.com/questions/4623446/how-do-you-sort-files-numerically
+                        paramfiles.sort(key=lambda var:[int(x) if x.isdigit() else x for x in re.findall(r'[^0-9]|[0-9]+', var)])
+                        print('Number of parameters', len(paramfiles))
+
+                        # Make A4 figure
+                        pdffigure = os.path.join(sd,
+                                                 'evaluationplot_' + star + '_' + r + '.pdf')
+
+                        success, params, model_name, stats = make_pdffigure(
+                            pdffigure=pdffigure,
+                            datafile=datafile,
+                            computationfile=computationfile,
+                            summaryfile=summaryfile,
+                            paramfiles=paramfiles,
+                            resultdir=resultdir,
+                            runresultdir=sd
+                        )
+                        ocs.append(stats[-1])
+
+                bestfit = np.argmin(ocs)
+                runresultdir = successs[bestfit]
+        else:
+            print('Fewer runs than what should be compared exist')
+            print('Takes the newest instead')
+            runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                               key=os.path.getmtime)
+    else:
+        runresultdir = run
+    runresultdir = os.path.join(resultdir, runresultdir)
+    return runresultdir
+
+
 def evaluate(idstr, run):
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
@@ -460,29 +522,7 @@ def evaluate(idstr, run):
             star = star.split('.')[0]
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
-            if run == newestrun:
-                # Check date
-                # https://stackoverflow.com/questions/2014554/find-the-newest-folder-in-a-directory-in-python
-                runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
-                                   key=os.path.getmtime)
-            elif run == newestconvrun:
-                # Check date and if successfile is there
-                subdirs = [d for d in os.listdir(resultdir) if os.path.isdir(d)]
-                runresultdir = None
-                while len(subdirs) > 0:
-                    r = max(subdirs, key=os.path.getmtime)
-                    if file in r:
-                        runresultdir = r
-                        break
-                    else:
-                        # remove dir from subdirs
-                        subdirs = subdirs.remove(r)
-                if runresultdir is None:
-                    # Take the newest run if no runs with convergence
-                    runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
-                                       key=os.path.getmtime)
-            else:
-                runresultdir = os.path.join(resultdir, run)
+            runresultdir = get_run_based_on_mode(resultdir, run)
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
             if not os.path.exists(computationfile):
@@ -516,32 +556,7 @@ def evaluate(idstr, run):
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
 
-            if run == newestrun:
-                # Check date
-                # https://stackoverflow.com/questions/2014554/find-the-newest-folder-in-a-directory-in-python
-                r = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
-                        key=os.path.getmtime)
-                runresultdir = os.path.join(resultdir, r)
-            elif run == newestconvrun:
-                # Check date and if successfile is there
-                subdirs = [d for d in os.listdir(resultdir) if os.path.isdir(d)]
-                runresultdir = None
-                while len(subdirs) > 0:
-                    r = max(subdirs, key=os.path.getmtime)
-                    if successfile in r:
-                        runresultdir = os.path.join(resultdir, r)
-                        break
-                    else:
-                        # remove dir from subdirs
-                        subdirs = subdirs.remove(r)
-                if runresultdir is None:
-                    # Take the newest run if no runs with convergence
-                    r = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
-                            key=os.path.getmtime)
-                    runresultdir = os.path.join(resultdir, r)
-            else:
-                runresultdir = os.path.join(resultdir, run)
-                r = run
+            runresultdir = get_run_based_on_mode(resultdir, run)
             summaryfile = os.path.join(runresultdir, successfile)
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
@@ -558,13 +573,15 @@ def evaluate(idstr, run):
             pdffigure = os.path.join(runresultdir,
                                      'evaluationplot_' + star + '_' + r + '.pdf')
 
-            success, params, model_name = make_pdffigure(pdffigure=pdffigure,
-                                                         datafile=datafile,
-                                                         computationfile=computationfile,
-                                                         summaryfile=summaryfile,
-                                                         paramfiles=paramfiles,
-                                                         resultdir=resultdir,
-                                                         runresultdir=runresultdir)
+            success, params, model_name, stats = make_pdffigure(
+                pdffigure=pdffigure,
+                datafile=datafile,
+                computationfile=computationfile,
+                summaryfile=summaryfile,
+                paramfiles=paramfiles,
+                resultdir=resultdir,
+                runresultdir=runresultdir
+            )
 
             # Open pdf page with prompt
             #subprocess.call(["xdg-open", pdffigure])
@@ -679,6 +696,10 @@ def evaluate(idstr, run):
 
             # Add run number to logfile
             log_row['run'] = r
+
+            if stats is not None:
+                ocstd = stats[-1]
+                log_row["oc_std"] = ocstd
 
             writer.writerow(log_row)
 
