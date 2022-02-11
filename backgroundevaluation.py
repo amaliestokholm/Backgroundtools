@@ -45,8 +45,10 @@ manualmode = ['manual', 'm', 'M']
 numaxmode = ['numax', 'n', 'N']
 fullinput = goodinput + discardinput + retryinput
 yninput = goodinput + noinput
+newestrun = 'newest'
+newestconvrun = 'newconv'
 
-
+successfile = 'background_parameterSummary.txt'
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Modules
@@ -102,8 +104,81 @@ def run_numaxmode(star, model_name, newrun):
           newrun)
 
 
+def smooth(x, window_len=11, window='hanning'):
+    """
+    Function from https://scipy-cookbook.readthedocs.io/items/SignalSmooth.html
+
+    smooth the data using a window with requested size.
+
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+
+    input:
+        x: the input signal
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+        flat window will produce a moving average smoothing.
+
+    output:
+        the smoothed signal
+
+    example:
+        t=linspace(-2,2,0.1)
+        x=sin(t)+randn(len(t))*0.1
+        y=smooth(x)
+
+     """
+     if x.ndim != 1:
+         raise ValueError, "smooth only accepts 1 dimension arrays."
+
+     if x.size < window_len:
+         raise ValueError, "Input vector needs to be bigger than window size."
+
+     if window_len < 3:
+         return x
+
+     if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+         raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+
+     s = np.r_[x[window_len-1:0:-1], x, x[-2:-window_len-1:-1]]
+     if window == 'flat':
+             w = np.ones(window_len, 'd')
+     else:
+         w = eval('np.' + window + '(window_len)')
+
+     y = np.convolve(w / w.sum(), s, mode='valid')
+     return y
+
+
+def compute_oc(freq, psd_smth, b2, win_len, numax):
+    """
+    This statistics compares the fit to the data and excludes the lowest frequencies.
+
+    Parameters
+    ----------
+    psd_smooth : array
+        Power in power spectrum
+    domain : mask
+        The array in frequency over which we should compare fit to PSD.
+    b2 : array
+        Sum of all fitting components -- the outputted fit to the PSD.
+    """
+    # Do not compare at the lowest frequencies
+    sig_env = 0.33 * numax ** 0.88
+    cut = max(1, numax - 4 * sig_env)
+    domain = np.where(freq > cut)[0]
+
+    # Compute moving average
+    psd_smth = smooth(psd, window_len=win_len, window='flat')
+    oc = psd_smooth[domain] - b2[domain]
+    return np.mean(oc), np.median(oc), np.std(oc)
+
+
 def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
-                   paramfiles, resultdir, runresultdir):
+                   paramfiles, resultdir, runresultdir,
+                   histograms=True):
     # Here I adjusted code from `background_plot`
     freq, psd = np.loadtxt(datafile, unpack=True)
     config = np.loadtxt(computationfile, unpack=True, dtype=str)
@@ -167,13 +242,26 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
         for i, pf in enumerate(paramfiles):
             ax2 = fig.add_subplot(gs[2+ (i // ncols), i % ncols])
             sampling = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
-            ax2.set_xlim(0, sampling.size)
-            ax2.set_ylim(np.min(sampling),np.max(sampling))
-            ax2.set_xlabel(r'Nested iteration')
-            ax2.set_ylabel(pf.split('_')[1].split('.')[0])
-            ax2.plot(np.arange(sampling.size),sampling,'k', lw=1)
+            if histograms:
+                ax2,set_xlabel(pf.split('_')[1].split('.')[0])
+                ax2.hist(sampling, bins='auto')
+            else:
+                ax2.set_xlim(0, sampling.size)
+                ax2.set_ylim(np.min(sampling),np.max(sampling))
+                ax2.set_xlabel(r'Nested iteration')
+                ax2.set_ylabel(pf.split('_')[1].split('.')[0])
+                ax2.plot(np.arange(sampling.size),sampling,'k', lw=1)
         plt.tight_layout()
         pdf.savefig(fig)
+
+        if params is not None:
+            stats = compute_oc(freq, psd_smth, b2, win_len, numax)
+            statsfile = os.path.join(resultdir, 'fit.csv')
+            np.savetxt(statsfile, stats, delimiter=',')
+        else:
+            stats = None
+
+    plt.close()
     return success, params, model_name
 
 
@@ -183,7 +271,6 @@ def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
         newrun = str(int(run)+1)
         if len(newrun) < 2:
             newrun = '0' + newrun
-
 
     today = date.today().strftime('%Y%m%d')
     evaldir = './evaluation/'
@@ -239,11 +326,23 @@ def get_idstr_run(idstr=None, run=None):
         idstr = sanitised_input(type_=str)
 
     if run is None:
+        print('Which runs do you want to use?')
+        print('If you want the newest run, type n')
+        print('If you want the most recent converged run and if no such exists then the newest, type c')
+        print('If you want the same run for all stars, type s')
+        run = sanitised_input(type_=str, range=['n', 'c', 's'])
+    if run=='n':
+        # Newest run
+        run = newestrun
+    elif run=='c':
+        # Newest converged
+        run = newestconvrun
+    elif run=='s':
         print('Please define the run-string (e.g. 00 or 01)')
         run = sanitised_input(type_=int)
         run = str(run)
-    if len(run) < 2:
-        run = '0' + run
+        if len(run) < 2:
+            run = '0' + run
     return idstr, run
 
 
@@ -257,12 +356,16 @@ def do_eval(idstr, run):
     resultdir = './results/'
 
     evaldir = './evaluation/'
-    runevaldir = os.path.join(evaldir, idstr + '_run' + run)
+    runevaldir = os.path.join(evaldir, idstr + '_run_' + run)
     goodevaldir = os.path.join(runevaldir, 'goodfits')
     logfile = os.path.join(evaldir, idstr + 'run_' + run + '.csv')
-    errorfile = os.path.join(evaldir, 'errors_' + run + '.txt')
 
-    newrun = str(int(run)+1)
+    if run not in [newestrun, newestconvrun]:
+        newrun = str(int(run)+1)
+    else:
+        print('Please define the new run-string for the next run (e.g. 02 or 03)')
+        newrun = sanitised_input(type_=int)
+        newrun = str(newrun)
     if len(newrun) < 2:
         newrun = '0' + newrun
 
@@ -273,10 +376,9 @@ def do_eval(idstr, run):
 
     print('For the %s stars with good evaluations, their fits will be copied to %s' % (
         np.sum(goodmask), goodevaldir))
-    for star in df.star[goodmask]:
+    for star, run in zip(df.star[goodmask], df.run[goodmask]):
         resultdir = os.path.join('./results/' + star)
         runresultdir = os.path.join(resultdir, run)
-        newrunresultdir = os.path.join(resultdir, run)
         copy_tree(runresultdir, os.path.join(goodevaldir, star))
 
     for star, params_str in zip(df.star[retrymask], df.params[retrymask]):
@@ -358,7 +460,29 @@ def evaluate(idstr, run):
             star = star.split('.')[0]
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
-            runresultdir = os.path.join(resultdir, run)
+            if run == newestrun:
+                # Check date
+                # https://stackoverflow.com/questions/2014554/find-the-newest-folder-in-a-directory-in-python
+                runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                                   key=os.path.getmtime)
+            elif run == newestconvrun:
+                # Check date and if successfile is there
+                subdirs = [d for d in os.listdir(resultdir) if os.path.isdir(d)]
+                runresultdir = None
+                while len(subdirs) > 0:
+                    r = max(subdirs, key=os.path.getmtime)
+                    if file in r:
+                        runresultdir = r
+                        break
+                    else:
+                        # remove dir from subdirs
+                        subdirs = subdirs.remove(r)
+                if runresultdir is None:
+                    # Take the newest run if no runs with convergence
+                    runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                                       key=os.path.getmtime)
+            else:
+                runresultdir = os.path.join(resultdir, run)
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
             if not os.path.exists(computationfile):
@@ -391,11 +515,34 @@ def evaluate(idstr, run):
             # Navigate to directory
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
-            runresultdir = os.path.join(resultdir, run)
-            newrunresultdir = os.path.join(resultdir, run)
 
-            summaryfile = os.path.join(runresultdir,
-                                       'background_parameterSummary.txt')
+            if run == newestrun:
+                # Check date
+                # https://stackoverflow.com/questions/2014554/find-the-newest-folder-in-a-directory-in-python
+                r = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                        key=os.path.getmtime)
+                runresultdir = os.path.join(resultdir, r)
+            elif run == newestconvrun:
+                # Check date and if successfile is there
+                subdirs = [d for d in os.listdir(resultdir) if os.path.isdir(d)]
+                runresultdir = None
+                while len(subdirs) > 0:
+                    r = max(subdirs, key=os.path.getmtime)
+                    if successfile in r:
+                        runresultdir = os.path.join(resultdir, r)
+                        break
+                    else:
+                        # remove dir from subdirs
+                        subdirs = subdirs.remove(r)
+                if runresultdir is None:
+                    # Take the newest run if no runs with convergence
+                    r = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                            key=os.path.getmtime)
+                    runresultdir = os.path.join(resultdir, r)
+            else:
+                runresultdir = os.path.join(resultdir, run)
+                r = run
+            summaryfile = os.path.join(runresultdir, successfile)
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
 
@@ -409,7 +556,7 @@ def evaluate(idstr, run):
 
             # Make A4 figure
             pdffigure = os.path.join(runresultdir,
-                                     'evaluationplot_' + star + '_' + run + '.pdf')
+                                     'evaluationplot_' + star + '_' + r + '.pdf')
 
             success, params, model_name = make_pdffigure(pdffigure=pdffigure,
                                                          datafile=datafile,
@@ -482,7 +629,7 @@ def evaluate(idstr, run):
 
                     print('How would you like to update the parameters?')
                     hyperparamsfile = os.path.join(resultdir,
-                                                   'background_hyperParameters_' + run + '.txt')
+                                                   'background_hyperParameters_' + r + '.txt')
                     hyperparams = np.loadtxt(hyperparamsfile, skiprows=6, unpack=True).T
                     new_params = []
                     for i, line in enumerate(hyperparams):
@@ -530,13 +677,16 @@ def evaluate(idstr, run):
             else:
                 log_row["notes"] = "None"
 
+            # Add run number to logfile
+            log_row['run'] = r
+
             writer.writerow(log_row)
 
     print("Want to perform the actions from the evaluation (copy good + prepare reruns)?")
     print("If you say 'n' here, you can always run this script later with 'do' and 'retry'.")
     if sanitised_input(range_=yninput) in goodinput:
         do_eval(idstr, run)
-        make_retryshellscript(idstr, run)
+        make_retryshellscript(idstr, run, newrun=newrun)
 
 
 parser = argparse.ArgumentParser()
