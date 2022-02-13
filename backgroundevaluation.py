@@ -489,7 +489,7 @@ def get_run_based_on_mode(resultdir, run):
     return runresultdir
 
 
-def evaluate(idstr, run):
+def evaluate(idstr, run, auto=False):
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
     resultdir = './results/'
@@ -602,15 +602,18 @@ def evaluate(idstr, run):
             #subprocess.call(["xdg-open", pdffigure])
             webbrowser.open_new_tab(pdffigure)
 
-            print('What is your evaluation?')
-            if success:
-                print('If you want to keep it, write something in', goodinput)
-            print('If you want to reset it with new parameters, write something in', retryinput)
-            print('If you want to fully discard the star, write something in', discardinput)
-            if success:
-                usereval = sanitised_input(range_=fullinput)
+            if auto:
+                usereval = retryinput[0]
             else:
-                usereval = sanitised_input(range_=retryinput + discardinput)
+                print('What is your evaluation?')
+                if success:
+                    print('If you want to keep it, write something in', goodinput)
+                print('If you want to reset it with new parameters, write something in', retryinput)
+                print('If you want to fully discard the star, write something in', discardinput)
+                if success:
+                    usereval = sanitised_input(range_=fullinput)
+                else:
+                    usereval = sanitised_input(range_=retryinput + discardinput)
 
             log_row = {
                 'date': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
@@ -623,11 +626,14 @@ def evaluate(idstr, run):
                 print('Evaluation: Good fit')
                 log_row['params'] = "None"
             elif usereval in retryinput:
-                print('Evalutation: Retry fit')
-                print('The current model is', model_name)
-                print('Would you like to keep the model? y/n')
-                usermodelchoice = sanitised_input(type_=str, range_=yninput)
-                new_model_name = None
+                if auto:
+                    usermodelchoice = goodinput[0]
+                else:
+                    print('Evalutation: Retry fit')
+                    print('The current model is', model_name)
+                    print('Would you like to keep the model? y/n')
+                    usermodelchoice = sanitised_input(type_=str, range_=yninput)
+                    new_model_name = None
 
                 if usermodelchoice in noinput:
                     while True:
@@ -646,8 +652,12 @@ def evaluate(idstr, run):
                         break
                 else:
                     new_model_name = model_name
-                    print('Would you like to change the parameters automatically (`a`), manually (`m`), or based on a numax (`n`)?')
-                    userretrymode = sanitised_input(range_=automode + manualmode + numaxmode)
+
+                    if auto:
+                        userretrymode = automode[0]
+                    else:
+                        print('Would you like to change the parameters automatically (`a`), manually (`m`), or based on a numax (`n`)?')
+                        userretrymode = sanitised_input(range_=automode + manualmode + numaxmode)
 
                 if userretrymode in numaxmode:
                     # Either we keep the model and run based on numax,
@@ -712,8 +722,12 @@ def evaluate(idstr, run):
                 # This should never run when fullinput only has three options
                 raise Exception('Input not recognised, try input in %s' % (goodinput + discardinput + retryinput,))
 
-            print('Do you want to add any notes? y/n')
-            usernotes = sanitised_input(range_=yninput)
+            if auto:
+                usernotes = discardinput[0]
+            else:
+                print('Do you want to add any notes? y/n')
+                usernotes = sanitised_input(range_=yninput)
+
             if usernotes in goodinput:
                 print('Write your notes here:')
                 log_row["notes"] = sanitised_input()
@@ -729,15 +743,19 @@ def evaluate(idstr, run):
 
             writer.writerow(log_row)
 
-    print("Want to perform the actions from the evaluation (copy good + prepare reruns)?")
-    print("If you say 'n' here, you can always run this script later with 'do' and 'retry'.")
-    if sanitised_input(range_=yninput) in goodinput:
+    if auto:
         do_eval(idstr, run)
         make_retryshellscript(idstr, run, newrun=newrun)
+    else:
+        print("Want to perform the actions from the evaluation (copy good + prepare reruns)?")
+        print("If you say 'n' here, you can always run this script later with 'do' and 'retry'.")
+        if sanitised_input(range_=yninput) in goodinput:
+            do_eval(idstr, run)
+            make_retryshellscript(idstr, run, newrun=newrun)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("mode", choices=['eval', 'do', 'retry'])
+parser.add_argument("mode", choices=['eval', 'do', 'retry', 'auto'])
 parser.add_argument("id", nargs="?")
 parser.add_argument("run", nargs="?")
 
@@ -752,6 +770,8 @@ if __name__ == "__main__":
         do_eval(idstr, run)
     elif args.mode == "retry":
         make_retryshellscript(idstr, run)
+    elif args.mode == 'auto':
+        evaluate(idstr, run, auto=True)
     else:
         raise Exception("Unknown mode")
     print('\n')
