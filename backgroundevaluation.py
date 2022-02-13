@@ -28,7 +28,8 @@ import background as bg
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Initialise
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-fieldnames = ['date', 'star', 'model', 'decision', 'notes', 'params']
+fieldnames = ['date', 'star', 'run', 'model',
+              'decision', 'notes', 'params', 'oc_std']
 
 backgroundmodels = ['FlatNoGaussian', 'Flat', 'Original',
                     'OneHarveyNoGaussian', 'TwoHarveyNoGaussian',
@@ -41,14 +42,15 @@ goodinput = ['yes', 'y', 'Y', 'Yes']
 noinput = ['no', 'n', 'N', 'No']
 discardinput = ['discard', 'd', 'D']
 retryinput = ['retry', 'r', 'R']
+automode = ['auto', 'automatic', 'a', 'A']
 manualmode = ['manual', 'm', 'M']
 numaxmode = ['numax', 'n', 'N']
 fullinput = goodinput + discardinput + retryinput
 yninput = goodinput + noinput
 newestrun = 'newest'
 newestconvrun = 'newconv'
+betteroftwo = 'better'
 altmodes = [betteroftwo, newestrun, newestconvrun]
-etteroftwo = 'better'
 
 successfile = 'background_parameterSummary.txt'
 statsfile = 'stats.csv'
@@ -126,8 +128,7 @@ def compute_oc(freq, psd_smth, b2, win_len, numax):
     domain = np.where(freq > cut)[0]
 
     # Compute moving average
-    psd_smth = smooth(psd, window_len=win_len, window='flat')
-    oc = psd_smooth[domain] - b2[domain]
+    oc = psd_smth[domain] - b2[domain]
     return np.mean(oc), np.median(oc), np.std(oc)
 
 
@@ -137,6 +138,7 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     # Here I adjusted code from `background_plot`
     freq, psd = np.loadtxt(datafile, unpack=True)
     config = np.loadtxt(computationfile, unpack=True, dtype=str)
+    sf = os.path.join(runresultdir, statsfile)
     model_name = config[-2]
 
     # Plot best-fitting model or initial guess
@@ -156,8 +158,9 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
         params = None
         numax = 50
 
-    if os.path.isfile(pdffigure):
-        return success, params, model_name
+    if os.path.isfile(pdffigure) and os.path.isfile(sf):
+        stats = np.loadtxt(sf, delimiter=',')
+        return success, params, model_name, stats
 
     with PdfPages(pdffigure) as pdf:
         fig = plt.figure(figsize=(8.27, 11.7)) # A4 format-ish
@@ -198,8 +201,8 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
             ax2 = fig.add_subplot(gs[2+ (i // ncols), i % ncols])
             sampling = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
             if histograms:
-                ax2,set_xlabel(pf.split('_')[1].split('.')[0])
-                ax2.hist(sampling, bins='auto')
+                ax2.set_xlabel(pf.split('_')[1].split('.')[0])
+                ax2.hist(sampling, bins='auto', c='0.8')
             else:
                 ax2.set_xlim(0, sampling.size)
                 ax2.set_ylim(np.min(sampling),np.max(sampling))
@@ -286,7 +289,7 @@ def get_idstr_run(idstr=None, run=None):
         print('If you want the most recent converged run (if no such exists, the newest), type c')
         print('If you want the run with the highest oc of the latest two converged run (or newest if no convergence), type b')
         print('If you want the same run for all stars, type s')
-        run = sanitised_input(type_=str, range=['n', 'c', 'b', 's'])
+        run = sanitised_input(type_=str, range_=['n', 'c', 'b', 's'])
     if run == 'n':
         # Newest run
         run = newestrun
@@ -374,10 +377,14 @@ def do_eval(idstr, run):
 
 
 def get_run_based_on_mode(resultdir, run):
+    # First check if any run exists
+    if len(os.listdir(resultdir)) == 0:
+        return None
     if run == newestrun:
         # Check date
         # https://stackoverflow.com/questions/2014554/find-the-newest-folder-in-a-directory-in-python
-        runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+        runresultdir = max([os.path.join(resultdir, d) for d in os.listdir(resultdir)
+                            if os.path.isdir(os.path.join(resultdir, d))],
                            key=os.path.getmtime)
     elif run == newestconvrun:
         # Check date and if successfile is there
@@ -387,13 +394,15 @@ def get_run_based_on_mode(resultdir, run):
             r = max(subdirs, key=os.path.getmtime)
             if file in r:
                 runresultdir = r
+                runresultdir = os.path.join(resultdir, runresultdir)
                 break
             else:
                 # remove dir from subdirs
                 subdirs = subdirs.remove(r)
         if runresultdir is None:
             # Take the newest run if no runs with convergence
-            runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+            runresultdir = max([os.path.join(resultdir, d) for d in os.listdir(resultdir)
+                                if os.path.isdir(os.path.join(resultdir, d))],
                                key=os.path.getmtime)
     elif run == betteroftwo:
         # Check the two newest runs and check which has the better oc
@@ -418,11 +427,13 @@ def get_run_based_on_mode(resultdir, run):
 
             if len(successs) == 0:
                 # If none, take the newest
-                runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+                runresultdir = max([os.path.join(resultdir, d) for d in os.listdir(resultdir)
+                                    if os.path.isdir(os.path.join(resultdir, d))],
                                    key=os.path.getmtime)
             elif len(successs) == 1:
                 # If one, take that one
                 runresultdir = successs[0]
+                runresultdir = os.path.join(resultdir, runresultdir)
             elif len(successs) > 1:
                 # If more, get oc of all runs
                 # Compute if they do not exist
@@ -466,14 +477,15 @@ def get_run_based_on_mode(resultdir, run):
 
                 bestfit = np.argmin(ocs)
                 runresultdir = successs[bestfit]
+                runresultdir = os.path.join(resultdir, runresultdir)
         else:
             print('Fewer runs than what should be compared exist')
             print('Takes the newest instead')
-            runresultdir = max([d for d in os.listdir(resultdir) if os.path.isdir(d)],
+            runresultdir = max([os.path.join(resultdir, d) for d in os.listdir(resultdir)
+                                if os.path.isdir(os.path.join(resultdir, d))],
                                key=os.path.getmtime)
     else:
-        runresultdir = run
-    runresultdir = os.path.join(resultdir, runresultdir)
+        runresultdir = os.path.join(resultdir, runresultdir)
     return runresultdir
 
 
@@ -529,6 +541,7 @@ def evaluate(idstr, run):
             if not os.path.exists(computationfile):
                 continue
             starlist.append(star)
+            assert runresultdir is not None
             runresultdirs.append(runresultdir)
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
@@ -557,6 +570,7 @@ def evaluate(idstr, run):
             # Navigate to directory
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
+            r = runresultdir.split('/')[-1]
 
             summaryfile = os.path.join(runresultdir, successfile)
             computationfile = os.path.join(runresultdir,
@@ -631,20 +645,31 @@ def evaluate(idstr, run):
                             new_model_name = usermodel
                         break
                 else:
-                    print('Would you like to change the parameters manually (`m`) or based on a numax (`n`)?')
-                    userretrymode = sanitised_input(range_=manualmode + numaxmode)
-                    if userretrymode in numaxmode:
-                        new_model_name = model_name
+                    new_model_name = model_name
+                    print('Would you like to change the parameters automatically (`a`), manually (`m`), or based on a numax (`n`)?')
+                    userretrymode = sanitised_input(range_=automode + manualmode + numaxmode)
 
-                if new_model_name is not None:
+                if userretrymode in numaxmode:
                     # Either we keep the model and run based on numax,
                     # or we change to another model.
                     print('What is your estimate of numax?')
                     usernumax = sanitised_input(type_=float)
                     log_row['params'] = json.dumps({"model": new_model_name, "numax": usernumax})
+                elif userretrymode in automode:
+                    # Change the parameters based on the parameters of this run
+                    for i, pf in enumerate(paramfiles):
+                        pars = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
+                        pmed = np.median(pars)
+                        pstd = np.std(pars)
+                        newline = [max(0, pmed - (3 * pstd)),
+                                   pmed + (3 * pstd)]
+                        new_params.extend(newline)
+
+                    new_params = np.asarray(new_params)
+                    new_params = np.reshape(new_params, ((len(new_params) // 2) , 2))
+                    log_row["params"] = json.dumps({"model": model_name, "params": new_params.tolist()})
                 else:
                     # Change the parameters manually
-
                     print('How would you like to update the parameters?')
                     hyperparamsfile = os.path.join(resultdir,
                                                    'background_hyperParameters_' + r + '.txt')
