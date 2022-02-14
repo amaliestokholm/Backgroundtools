@@ -202,7 +202,7 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
             sampling = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
             if histograms:
                 ax2.set_xlabel(pf.split('_')[1].split('.')[0])
-                ax2.hist(sampling, bins='auto', c='0.8')
+                ax2.hist(sampling, bins='auto', color='0.8')
             else:
                 ax2.set_xlim(0, sampling.size)
                 ax2.set_ylim(np.min(sampling),np.max(sampling))
@@ -600,7 +600,8 @@ def evaluate(idstr, run, auto=False):
 
             # Open pdf page with prompt
             #subprocess.call(["xdg-open", pdffigure])
-            webbrowser.open_new_tab(pdffigure)
+            if not auto:
+                webbrowser.open_new_tab(pdffigure)
 
             if auto:
                 usereval = retryinput[0]
@@ -667,6 +668,7 @@ def evaluate(idstr, run, auto=False):
                     log_row['params'] = json.dumps({"model": new_model_name, "numax": usernumax})
                 elif userretrymode in automode:
                     # Change the parameters based on the parameters of this run
+                    new_params = []
                     for i, pf in enumerate(paramfiles):
                         pars = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
                         pmed = np.median(pars)
