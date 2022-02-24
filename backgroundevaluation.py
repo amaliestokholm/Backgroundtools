@@ -132,6 +132,62 @@ def compute_oc(freq, psd_smth, b2, win_len, numax):
     return np.mean(oc), np.median(oc), np.std(oc)
 
 
+def get_label_names(model_name):
+    # Get the labels from Background
+    plot_labels = [r'W [ppm$^2$/$\mu$Hz]',
+                   r'$\sigma_{color}$ [ppm]',
+                   r'$\nu_{color}$ [$\mu$Hz]',
+                   r'$\sigma_{long}$ [ppm]',
+                   r'$\nu_{long}$ [$\mu$Hz]',
+                   r'$\sigma_{gran,1}$ [ppm]',
+                   r'$\nu_{gran,1}$ [$\mu$Hz]',
+                   r'$\sigma_{gran,2}$ [ppm]',
+                   r'$\nu_{gran,2}$ [$\mu$Hz]',
+                   r'$\sigma_{gran}^{org}$ [ppm]',
+                   r'$\nu_{gran}^{org}$ [$\mu$Hz]',
+                   r'H$_{osc}$ [ppm$^2$/$\mu$Hz]',
+                   r'$\nu_{max} [$\mu$Hz]$',
+                   r'$\sigma_{env}$ [$\mu$Hz]']
+
+    if model_name == 'FlatNoGaussian':
+        plot_labels = [plot_labels[0]]
+
+    if model_name == 'Flat':
+        plot_labels = [plot_labels[0]] + plot_labels[-3:]
+
+    if model_name == 'Original':
+        plot_labels = [plot_labels[0]] + plot_labels[9:11] + plot_labels[-3:]
+
+    if model_name == 'OneHarveyNoGaussian':
+        plot_labels = [plot_labels[0]] + plot_labels[7:9]
+
+    if model_name == 'OneHarvey':
+        plot_labels = [plot_labels[0]] + plot_labels[7:9] + plot_labels[-3:]
+
+    if model_name == 'OneHarveyColor':
+        plot_labels = plot_labels[0:3] + plot_labels[7:9] + plot_labels[-3:]
+
+    if model_name == 'TwoHarveyNoGaussian':
+        plot_labels = [plot_labels[0]] + plot_labels[5:9]
+
+    if model_name == 'TwoHarvey':
+        plot_labels = [plot_labels[0]] + plot_labels[5:9] + plot_labels[-3:]
+
+    if model_name == 'TwoHarveyColor':
+        plot_labels = plot_labels[0:3] + plot_labels[5:9] + plot_labels[-3:]
+
+    if model_name == 'ThreeHarveyNoGaussian':
+        plot_labels = [plot_labels[0]] + plot_labels[3:9]
+
+    if model_name == 'ThreeHarvey':
+        plot_labels = [plot_labels[0]] + plot_labels[3:9] + plot_labels[-3:]
+
+    if model_name == 'ThreeHarveyColor':
+        plot_labels = [plot_labels[0:9]] + plot_labels[-3:]
+
+    return plot_labels
+
+
 def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
                    paramfiles, resultdir, runresultdir,
                    histograms=True):
@@ -158,9 +214,11 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
         params = None
         numax = 50
 
-    if os.path.isfile(pdffigure) and os.path.isfile(sf):
-        stats = np.loadtxt(sf, delimiter=',')
-        return success, params, model_name, stats
+    #if os.path.isfile(pdffigure) and os.path.isfile(sf):
+    #    stats = np.loadtxt(sf, delimiter=',')
+    #    return success, params, model_name, stats
+
+    plot_labels = get_plot_labels(model_name)
 
     with PdfPages(pdffigure) as pdf:
         fig = plt.figure(figsize=(8.27, 11.7)) # A4 format-ish
@@ -203,6 +261,7 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
             if histograms:
                 ax2.set_xlabel(pf.split('_')[1].split('.')[0])
                 ax2.hist(sampling, bins='auto', color='0.8')
+                ax2.set_title(plot_labels[i], fontsize='small')
             else:
                 ax2.set_xlim(0, sampling.size)
                 ax2.set_ylim(np.min(sampling),np.max(sampling))
@@ -226,9 +285,15 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
 def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
     # Read from logfile in order to properly handle resumed evaluations
     if newrun is None:
-        newrun = str(int(run)+1)
+        if run not in altmodes:
+            newrun = str(int(run)+1)
+        else:
+            print('Please define the new run-string for the next run (e.g. 02 or 03)')
+            newrun = sanitised_input(type_=int)
+            newrun = str(newrun)
         if len(newrun) < 2:
             newrun = '0' + newrun
+            newrun = str(int(run)+1)
 
     today = date.today().strftime('%Y%m%d')
     evaldir = './evaluation/'
@@ -378,7 +443,7 @@ def do_eval(idstr, run):
 
 def get_run_based_on_mode(resultdir, run):
     # First check if any run exists
-    if len(os.listdir(resultdir)) == 0:
+    if len([d for d in os.listdir(resultdir) if os.path.isdir(os.path.join(resultdir, d))]) == 0:
         return None
     if run == newestrun:
         # Check date
@@ -485,7 +550,7 @@ def get_run_based_on_mode(resultdir, run):
                                 if os.path.isdir(os.path.join(resultdir, d))],
                                key=os.path.getmtime)
     else:
-        runresultdir = os.path.join(resultdir, runresultdir)
+        runresultdir = os.path.join(resultdir, run)
     return runresultdir
 
 
@@ -541,8 +606,12 @@ def evaluate(idstr, run, auto=False):
             if not os.path.exists(computationfile):
                 continue
             starlist.append(star)
-            assert runresultdir is not None
+            assert star in runresultdir
             runresultdirs.append(runresultdir)
+
+    # TODO
+    #if excludelist is not None:
+    #    estars = 
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
 
@@ -668,13 +737,33 @@ def evaluate(idstr, run, auto=False):
                     log_row['params'] = json.dumps({"model": new_model_name, "numax": usernumax})
                 elif userretrymode in automode:
                     # Change the parameters based on the parameters of this run
+                    hyperparamsfile = os.path.join(resultdir,
+                                                   'background_hyperParameters_' + r + '.txt')
+                    hyperparams = np.loadtxt(hyperparamsfile, skiprows=6, unpack=True).T
                     new_params = []
                     for i, pf in enumerate(paramfiles):
                         pars = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
                         pmed = np.median(pars)
                         pstd = np.std(pars)
-                        newline = [max(0, pmed - (3 * pstd)),
-                                   pmed + (3 * pstd)]
+                        N, bin_ed = np.histogram(pars, bins='auto')
+                        th = 3 * pstd
+                        # If we are to close to one border, we extend the parameter space 3std in that direction
+                        if np.amax(N) - np.amin(pars) <= th:
+                            pmin = max(0, np.amin(pars) - th)
+                        else:
+                            pmin = max(0, pmed - th/2)
+
+                        if np.amax(pars) - np.amax(N) <= th:
+                            pmax = np.amax(pars) + th
+                        else:
+                            pmax = pmed + th/2
+
+                        if pmax - pmin > 1e4:
+                            line = hyperparams[i]
+                            newline = [line[0].astype(float),
+                                       line[1].astype(float)]
+                        else:
+                            newline = [pmin, pmax]
                         new_params.extend(newline)
 
                     new_params = np.asarray(new_params)
@@ -747,13 +836,13 @@ def evaluate(idstr, run, auto=False):
 
     if auto:
         do_eval(idstr, run)
-        make_retryshellscript(idstr, run, newrun=newrun)
+        make_retryshellscript(idstr, run)
     else:
         print("Want to perform the actions from the evaluation (copy good + prepare reruns)?")
         print("If you say 'n' here, you can always run this script later with 'do' and 'retry'.")
         if sanitised_input(range_=yninput) in goodinput:
             do_eval(idstr, run)
-            make_retryshellscript(idstr, run, newrun=newrun)
+            make_retryshellscript(idstr, run)
 
 
 parser = argparse.ArgumentParser()
