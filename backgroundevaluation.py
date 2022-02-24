@@ -132,7 +132,7 @@ def compute_oc(freq, psd_smth, b2, win_len, numax):
     return np.mean(oc), np.median(oc), np.std(oc)
 
 
-def get_label_names(model_name):
+def get_plot_labels(model_name):
     # Get the labels from Background
     plot_labels = [r'W [ppm$^2$/$\mu$Hz]',
                    r'$\sigma_{color}$ [ppm]',
@@ -146,7 +146,7 @@ def get_label_names(model_name):
                    r'$\sigma_{gran}^{org}$ [ppm]',
                    r'$\nu_{gran}^{org}$ [$\mu$Hz]',
                    r'H$_{osc}$ [ppm$^2$/$\mu$Hz]',
-                   r'$\nu_{max} [$\mu$Hz]$',
+                   r'$\nu_{max}$ [$\mu$Hz]$',
                    r'$\sigma_{env}$ [$\mu$Hz]']
 
     if model_name == 'FlatNoGaussian':
