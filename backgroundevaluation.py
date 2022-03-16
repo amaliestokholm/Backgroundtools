@@ -746,17 +746,17 @@ def evaluate(idstr, run, auto=False):
                         pmed = np.median(pars)
                         pstd = np.std(pars)
                         N, bin_ed = np.histogram(pars, bins='auto')
-                        th = 3 * pstd
+                        th = (3 * pstd) / 2
                         mode = bin_ed[np.argmax(N)]
                         # If we are to close to one border, we extend the parameter space 3std in that direction
                         if (mode - np.amin(pars)) <= th:
                             # Fail
-                            pmin = max(0, np.amin(pars) - th)
+                            pmin = max(0, np.amin(pars) - (2 * th))
                         else:
                             pmin = max(0, pmed - th)
 
                         if (np.amax(pars) - mode) <= th:
-                            pmax = np.amax(pars) + th
+                            pmax = np.amax(pars) + (2 * th)
                         else:
                             pmax = pmed + th
 
