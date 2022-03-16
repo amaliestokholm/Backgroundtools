@@ -146,7 +146,7 @@ def get_plot_labels(model_name):
                    r'$\sigma_{gran}^{org}$ [ppm]',
                    r'$\nu_{gran}^{org}$ [$\mu$Hz]',
                    r'H$_{osc}$ [ppm$^2$/$\mu$Hz]',
-                   r'$\nu_{max}$ [$\mu$Hz]$',
+                   r'$\nu_{max}$ [$\mu$Hz]',
                    r'$\sigma_{env}$ [$\mu$Hz]']
 
     if model_name == 'FlatNoGaussian':
@@ -747,16 +747,18 @@ def evaluate(idstr, run, auto=False):
                         pstd = np.std(pars)
                         N, bin_ed = np.histogram(pars, bins='auto')
                         th = 3 * pstd
+                        mode = bin_ed[np.argmax(N)]
                         # If we are to close to one border, we extend the parameter space 3std in that direction
-                        if np.amax(N) - np.amin(pars) <= th:
+                        if (mode - np.amin(pars)) <= th:
+                            # Fail
                             pmin = max(0, np.amin(pars) - th)
                         else:
-                            pmin = max(0, pmed - th/2)
+                            pmin = max(0, pmed - th)
 
-                        if np.amax(pars) - np.amax(N) <= th:
+                        if (np.amax(pars) - mode) <= th:
                             pmax = np.amax(pars) + th
                         else:
-                            pmax = pmed + th/2
+                            pmax = pmed + th
 
                         if pmax - pmin > 1e4:
                             line = hyperparams[i]
