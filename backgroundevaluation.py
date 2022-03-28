@@ -404,7 +404,7 @@ def do_eval(idstr, run):
         np.sum(goodmask), goodevaldir))
     for star, run in zip(df.star[goodmask], df.run[goodmask]):
         resultdir = os.path.join('./results/' + star)
-        runresultdir = os.path.join(resultdir, run)
+        runresultdir = os.path.join(resultdir, newrun)
         copy_tree(runresultdir, os.path.join(goodevaldir, star))
 
     for star, params_str in zip(df.star[retrymask], df.params[retrymask]):
@@ -554,7 +554,7 @@ def get_run_based_on_mode(resultdir, run):
     return runresultdir
 
 
-def evaluate(idstr, run, auto=False):
+def evaluate(idstr, run, auto=False, includelist=None):
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
     resultdir = './results/'
@@ -592,6 +592,12 @@ def evaluate(idstr, run, auto=False):
                 print('Evaluation is resumed')
                 resume = True
 
+    if includelist is not None:
+        print('Includes only stars in includelist', includelist)
+        assert os.path.exists(includelist)
+        ilist = np.loadtxt(includelist, dtype=str)
+        print('debug', ilist)
+
     # Find all stars in datadir
     starlist = []
     runresultdirs = []
@@ -605,13 +611,13 @@ def evaluate(idstr, run, auto=False):
                                            'background_computationParameters.txt')
             if not os.path.exists(computationfile):
                 continue
+            if includelist is not None:
+                if not star in ilist:
+                    continue
             starlist.append(star)
             assert star in runresultdir
             runresultdirs.append(runresultdir)
 
-    # TODO
-    #if excludelist is not None:
-    #    estars = 
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
 
@@ -849,6 +855,7 @@ def evaluate(idstr, run, auto=False):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("mode", choices=['eval', 'do', 'retry', 'auto'])
+parser.add_argument("includelist", nargs="?")
 parser.add_argument("id", nargs="?")
 parser.add_argument("run", nargs="?")
 
@@ -858,7 +865,10 @@ if __name__ == "__main__":
     print('Welcome to Background Evaluation')
     idstr, run = get_idstr_run(args.id, args.run)
     if args.mode == "eval":
-        evaluate(idstr, run)
+        if args.includelist:
+            evaluate(idstr, run, includelist=args.includelist)
+        else:
+            evaluate(idstr, run)
     elif args.mode == "do":
         do_eval(idstr, run)
     elif args.mode == "retry":
