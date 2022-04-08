@@ -31,11 +31,11 @@ import background as bg
 fieldnames = ['date', 'star', 'run', 'model',
               'decision', 'notes', 'params', 'oc_std']
 
-backgroundmodels = ['FlatNoGaussian', 'Flat', 'Original',
-                    'OneHarveyNoGaussian', 'TwoHarveyNoGaussian',
-                    'ThreeHarveyNoGaussian',
+backgroundmodels = ['Original', 'Flat',
                     'OneHarvey', 'TwoHarvey', 'ThreeHarvey',
-                    'OneHarveyColor', 'TwoHarveyColor', 'ThreeHarveyColor']
+                    'OneHarveyColor', 'TwoHarveyColor', 'ThreeHarveyColor',
+                    'FlatNoGaussian', 'OneHarveyNoGaussian',
+                    'TwoHarveyNoGaussian', 'ThreeHarveyNoGaussian']
 
 # Define acceptable user input
 goodinput = ['yes', 'y', 'Y', 'Yes']
@@ -196,6 +196,16 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     config = np.loadtxt(computationfile, unpack=True, dtype=str)
     sf = os.path.join(runresultdir, statsfile)
     model_name = config[-2]
+    if model_name not in backgroundmodels:
+        for bgm in backgroundmodels[::-1]:
+            print(bgm)
+            if bgm in computationfile.read():
+                print(bgm, 'found')
+                model_name = bgm
+            else:
+                print(bgm, 'not found')
+        if model_name not in backgroundmodels:
+            raise ValueError('model not in backgroundmodels')
 
     # Plot best-fitting model or initial guess
     if os.path.isfile(summaryfile):
@@ -214,9 +224,9 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
         params = None
         numax = 50
 
-    #if os.path.isfile(pdffigure) and os.path.isfile(sf):
-    #    stats = np.loadtxt(sf, delimiter=',')
-    #    return success, params, model_name, stats
+    if os.path.isfile(pdffigure) and os.path.isfile(sf):
+        stats = np.loadtxt(sf, delimiter=',')
+        return success, params, model_name, stats
 
     plot_labels = get_plot_labels(model_name)
 
