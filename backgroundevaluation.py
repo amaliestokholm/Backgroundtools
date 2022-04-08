@@ -199,7 +199,7 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     if model_name not in backgroundmodels:
         for bgm in backgroundmodels[::-1]:
             print(bgm)
-            if bgm in computationfile.read():
+            if bgm in open(computationfile).read():
                 print(bgm, 'found')
                 model_name = bgm
             else:
