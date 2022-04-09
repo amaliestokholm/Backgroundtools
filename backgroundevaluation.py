@@ -197,6 +197,10 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     sf = os.path.join(runresultdir, statsfile)
     model_name = config[-2]
     if model_name not in backgroundmodels:
+        print(computationfile)
+        print(config)
+        print(open(computationfile).read())
+        print('Try just to restart...')
         for bgm in backgroundmodels[::-1]:
             print(bgm)
             if bgm in open(computationfile).read():
@@ -453,6 +457,7 @@ def do_eval(idstr, run):
 
 def get_run_based_on_mode(resultdir, run):
     # First check if any run exists
+    star = resultdir.split('/')[-1]
     if len([d for d in os.listdir(resultdir) if os.path.isdir(os.path.join(resultdir, d))]) == 0:
         return None
     if run == newestrun:
@@ -520,7 +525,6 @@ def get_run_based_on_mode(resultdir, run):
                         ocs.append(stats[-1])
                     else:
                         # Navigate to directory
-                        star = resultdir.split('/')[-1]
                         datafile = os.path.join('./data/' + star + '.txt')
 
                         summaryfile = os.path.join(sd, successfile)
@@ -610,7 +614,7 @@ def evaluate(idstr, run, auto=False, includelist=None):
 
     # Find all stars in datadir
     starlist = []
-    runresultdirs = []
+    runresultdirs = {}
     for star in os.listdir(datadir):
         if star.endswith('.txt'):
             star = star.split('.')[0]
@@ -626,8 +630,8 @@ def evaluate(idstr, run, auto=False, includelist=None):
                     continue
             starlist.append(star)
             assert star in runresultdir
-            runresultdirs.append(runresultdir)
-
+            assert star not in runresultdirs
+            runresultdirs[star] = runresultdir
 
     assert len(starlist) > 0, 'No stars found - check ./data/'
 
@@ -637,7 +641,8 @@ def evaluate(idstr, run, auto=False, includelist=None):
         for star in df.star:
             assert star in starlist, star
             print('Star is already evaluated:', star)
-            starlist.remove(star)
+            i = starlist.index(star)
+            del starlist[i]
     else:
         mode = 'w'
         print('Iterating over all stars in', datadir)
@@ -648,13 +653,14 @@ def evaluate(idstr, run, auto=False, includelist=None):
         if mode == 'w':
             writer.writeheader()
 
-        for i, (star, runresultdir) in enumerate(zip(starlist, runresultdirs)):
+        for i, star in enumerate(starlist):
             print('')
             print('Evaluating', star)
             print('%s out of %s' % (i, len(starlist)))
             # Navigate to directory
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
+            runresultdir = runresultdirs[star]
             r = runresultdir.split('/')[-1]
 
             summaryfile = os.path.join(runresultdir, successfile)
