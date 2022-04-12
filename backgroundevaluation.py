@@ -228,9 +228,9 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
         params = None
         numax = 50
 
-    if os.path.isfile(pdffigure) and os.path.isfile(sf):
-        stats = np.loadtxt(sf, delimiter=',')
-        return success, params, model_name, stats
+    #if os.path.isfile(pdffigure) and os.path.isfile(sf):
+    #    stats = np.loadtxt(sf, delimiter=',')
+    #    return success, params, model_name, stats
 
     plot_labels = get_plot_labels(model_name)
 
