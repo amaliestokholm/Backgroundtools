@@ -621,6 +621,9 @@ def evaluate(idstr, run, auto=False, includelist=None):
             datafile = os.path.join('./data/' + star + '.txt')
             resultdir = os.path.join('./results/' + star)
             runresultdir = get_run_based_on_mode(resultdir, run)
+            if runresultdir is None:
+                print('Skips star', star)
+                continue
             computationfile = os.path.join(runresultdir,
                                            'background_computationParameters.txt')
             if not os.path.exists(computationfile):
