@@ -296,7 +296,7 @@ def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
     return success, params, model_name, stats
 
 
-def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
+def make_retryshellscript(idstr, run, includelist=None, newrun=None, chunksize=2000):
     # Read from logfile in order to properly handle resumed evaluations
     if newrun is None:
         if run not in altmodes:
@@ -305,9 +305,10 @@ def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
             print('Please define the new run-string for the next run (e.g. 02 or 03)')
             newrun = sanitised_input(type_=int)
             newrun = str(newrun)
-        if len(newrun) < 2:
+
+        print(newrun, len(newrun))
+        if len(newrun) == 1:
             newrun = '0' + newrun
-            newrun = str(int(run)+1)
 
     today = date.today().strftime('%Y%m%d')
     evaldir = './evaluation/'
@@ -319,6 +320,16 @@ def make_retryshellscript(idstr, run, newrun=None, chunksize=300):
 
     log = pd.read_csv(logfile, delimiter='\t')
     retrymask = ([d in retryinput for d in log['decision']])
+
+    if includelist is not None:
+        print('Includes only stars in includelist', includelist)
+        assert os.path.exists(includelist)
+        ilist = np.loadtxt(includelist, dtype=str)
+        print('debug', ilist)
+        retrymask &= np.isin(log['star'], ilist)
+        print('length')
+        print(np.sum(np.isin(log['star'], ilist)))
+
 
     if np.sum(retrymask) > 0:
         for i in range(0, len(log[retrymask]['star']), chunksize):
@@ -568,7 +579,7 @@ def get_run_based_on_mode(resultdir, run):
     return runresultdir
 
 
-def evaluate(idstr, run, auto=False, includelist=None):
+def evaluate(idstr, run, auto=False, includelist=None, *, userresume=None, usersure=None):
     today = date.today().strftime('%Y%m%d')
     datadir = './data/'
     resultdir = './results/'
@@ -591,13 +602,15 @@ def evaluate(idstr, run, auto=False, includelist=None):
     else:
         print('Old evaluation folder for this run detected')
         print('Do you want to resume evaluation? y/n')
-        userresume = sanitised_input(range_=yninput)
+        if userresume is None:
+            userresume = sanitised_input(range_=yninput)
         if userresume in goodinput:
             resume = True
         else:
             print('This will overwrite all earlier evaluations')
             print('Are you sure? y/n')
-            usersure = sanitised_input(range_=yninput)
+            if usersure is None:
+                usersure = sanitised_input(range_=yninput)
             if usersure in goodinput:
                 resume = False
                 shutil.rmtree(goodevaldir, ignore_errors=True)
@@ -877,6 +890,7 @@ parser.add_argument("mode", choices=['eval', 'do', 'retry', 'auto'])
 parser.add_argument("includelist", nargs="?")
 parser.add_argument("id", nargs="?")
 parser.add_argument("run", nargs="?")
+parser.add_argument("--userresume", action="store_true")
 
 
 if __name__ == "__main__":
@@ -891,9 +905,12 @@ if __name__ == "__main__":
     elif args.mode == "do":
         do_eval(idstr, run)
     elif args.mode == "retry":
-        make_retryshellscript(idstr, run)
+        if args.includelist:
+            make_retryshellscript(idstr, run, includelist=args.includelist)
+        else:
+            make_retryshellscript(idstr, run)
     elif args.mode == 'auto':
-        evaluate(idstr, run, auto=True)
+        evaluate(idstr, run, auto=True, userresume="y" if args.userresume else None)
     else:
         raise Exception("Unknown mode")
     print('\n')
