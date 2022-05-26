@@ -784,7 +784,7 @@ def evaluate(idstr, run, auto=False, includelist=None, *, userresume=None, users
                         pmed = np.median(pars)
                         pstd = np.std(pars)
                         N, bin_ed = np.histogram(pars, bins='auto')
-                        th = (3 * pstd) / 2
+                        th = (5 * pstd) / 2
                         mode = bin_ed[np.argmax(N)]
                         # If we are to close to one border, we extend the parameter space 3std in that direction
                         if (mode - np.amin(pars)) <= th:
