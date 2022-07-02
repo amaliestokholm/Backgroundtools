@@ -720,14 +720,29 @@ def evaluate(idstr, run, auto=False, includelist=None, *, userresume=None, users
             pdffigure = os.path.join(runresultdir,
                                      'evaluationplot_' + star + '_' + r + '.pdf')
 
-            success, params, model_name, stats = make_pdffigure(
+            log_row = {
+                'date': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+                'star': star,
+            }
+            model_name = get_model_name(computationfile)
+            if model_name is None:
+                print(star, "model not in backgroundmodels")
+                log_row["model"] = "error"
+                log_row["decision"] = discardinput[0]
+                log_row["params"] = "None"
+                log_row["notes"] = "None"
+                log_row['run'] = r
+                writer.writerow(log_row)
+                continue
+            success, params, model_name, stats = do_make_pdffigure(
                 pdffigure=pdffigure,
                 datafile=datafile,
-                computationfile=computationfile,
+                model_name=model_name,
                 summaryfile=summaryfile,
                 paramfiles=paramfiles,
                 resultdir=resultdir,
-                runresultdir=runresultdir
+                runresultdir=runresultdir,
+                histograms=True,
             )
 
             # Open pdf page with prompt
@@ -748,12 +763,8 @@ def evaluate(idstr, run, auto=False, includelist=None, *, userresume=None, users
                 else:
                     usereval = sanitised_input(range_=retryinput + discardinput)
 
-            log_row = {
-                'date': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-                'star': star,
-                'model': model_name,
-                'decision': usereval,
-            }
+            log_row["model"] = model_name
+            log_row["decision"] = usereval
 
             if success and usereval in goodinput:
                 print('Evaluation: Good fit')
