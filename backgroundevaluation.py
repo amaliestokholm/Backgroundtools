@@ -191,25 +191,50 @@ def get_plot_labels(model_name):
 def make_pdffigure(pdffigure, datafile, computationfile, summaryfile,
                    paramfiles, resultdir, runresultdir,
                    histograms=True):
+    model_name = get_model_name(computationfile)
+    if model_name is None:
+        raise ValueError('model not in backgroundmodels')
+    return do_make_pdffigure(
+        pdffigure,
+        datafile,
+        model_name,
+        summaryfile,
+        paramfiles,
+        resultdir,
+        runresultdir,
+        histograms,
+    )
+
+
+def get_model_name(computationfile: str) -> str:
+    config = np.loadtxt(computationfile, unpack=True, dtype=str)
+    model_name = config[-2]
+    if model_name in backgroundmodels:
+        return model_name
+    print(computationfile)
+    print(config)
+    with open(computationfile) as fp:
+        computationfile_contents = fp.read()
+    print(computationfile_contents)
+    print('Try just to restart...')
+    for bgm in backgroundmodels[::-1]:
+        print(bgm)
+        if bgm in computationfile_contents:
+            print(bgm, 'found')
+            model_name = bgm
+        else:
+            print(bgm, 'not found')
+    if model_name in backgroundmodels:
+        return model_name
+    return None
+
+
+def do_make_pdffigure(pdffigure, datafile, model_name, summaryfile,
+                   paramfiles, resultdir, runresultdir,
+                   histograms: bool):
     # Here I adjusted code from `background_plot`
     freq, psd = np.loadtxt(datafile, unpack=True)
-    config = np.loadtxt(computationfile, unpack=True, dtype=str)
     sf = os.path.join(runresultdir, statsfile)
-    model_name = config[-2]
-    if model_name not in backgroundmodels:
-        print(computationfile)
-        print(config)
-        print(open(computationfile).read())
-        print('Try just to restart...')
-        for bgm in backgroundmodels[::-1]:
-            print(bgm)
-            if bgm in open(computationfile).read():
-                print(bgm, 'found')
-                model_name = bgm
-            else:
-                print(bgm, 'not found')
-        if model_name not in backgroundmodels:
-            raise ValueError('model not in backgroundmodels')
 
     # Plot best-fitting model or initial guess
     if os.path.isfile(summaryfile):
