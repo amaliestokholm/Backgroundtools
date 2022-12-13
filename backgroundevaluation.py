@@ -17,6 +17,7 @@ import pandas as pd
 
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
+# plt.style.use('matplotlibrc')
 
 # https://stackoverflow.com/questions/1868714/
 # how-do-i-copy-an-entire-directory-of-files-into-an-existing-directory-using-pyth/22331852
@@ -879,9 +880,11 @@ def evaluate(
                         print("Which model would you like to change to?")
                         print("Choose one in", backgroundmodels)
                         usermodel = sanitised_input(type_=str)
-                        if usermodel not in backgroundmodels + ["1", "2"]:
+                        if usermodel not in backgroundmodels + ["0", "1", "2"]:
                             print("Choose a model in", backgroundmodels)
                             continue
+                        elif usermodel == "0":
+                            new_model_name = "Flat"
                         elif usermodel == "1":
                             new_model_name = "OneHarvey"
                         elif usermodel == "2":
@@ -892,15 +895,15 @@ def evaluate(
                 else:
                     new_model_name = model_name
 
-                    if auto:
-                        userretrymode = automode[0]
-                    else:
-                        print(
-                            "Would you like to change the parameters automatically (`a`), manually (`m`), or based on a numax (`n`)?"
-                        )
-                        userretrymode = sanitised_input(
-                            range_=automode + manualmode + numaxmode
-                        )
+                if auto:
+                    userretrymode = automode[0]
+                else:
+                    print(
+                        "Would you like to change the parameters automatically (`a`), manually (`m`), or based on a numax (`n`)?"
+                    )
+                    userretrymode = sanitised_input(
+                        range_=automode + manualmode + numaxmode
+                    )
 
                 if userretrymode in numaxmode:
                     # Either we keep the model and run based on numax,
