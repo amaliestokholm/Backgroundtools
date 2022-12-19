@@ -9,7 +9,7 @@ font.size : 18
 figure.figsize : 6.64306,4.5
 axes.titlesize : 16
 axes.labelsize : 18
-lines.linewidth : 2
+lines.linewidth : 1
 lines.markersize : 6
 legend.fontsize : 16
 mathtext.fontset : cm
@@ -18,7 +18,7 @@ axes.labelpad : 5
 axes.titlepad : 10
 
 text.latex.preamble : r"\usepackage{amsmath}"
-axes.linewidth : 2
+axes.linewidth : 1
 ytick.major.width : 2
 ytick.minor.width : 2
 xtick.major.width : 2
