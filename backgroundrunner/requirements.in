@@ -1,0 +1,4 @@
+# To update requirements.txt: .venv/bin/pip install pip-tools && .venv/bin/pip-compile
+astropy
+matplotlib
+pandas

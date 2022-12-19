@@ -11,6 +11,7 @@ import shutil
 import sys
 import webbrowser
 from datetime import date, datetime
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -684,6 +685,64 @@ def get_run_based_on_mode(resultdir, run):
     return runresultdir
 
 
+def get_paramfiles(runresultdir: str) -> List[str]:
+    # Count number of params
+    paramfiles = [p for p in os.listdir(runresultdir) if "parameter0" in p]
+
+    # Human-sort list
+    # https://stackoverflow.com/questions/4623446/how-do-you-sort-files-numerically
+    paramfiles.sort(
+        key=lambda var: [
+            int(x) if x.isdigit() else x
+            for x in re.findall(r"[^0-9]|[0-9]+", var)
+        ]
+    )
+    return paramfiles
+
+
+def auto_adjust_hyperparameters(hyperparamsfile: str, runresultdir: str, paramfiles: List[str]) -> List[Tuple[float, float]]:
+    hyperparams = np.loadtxt(hyperparamsfile, skiprows=6, unpack=True).T
+    new_params_list: List[Tuple[float, float]] = []
+    for i, pf in enumerate(paramfiles):
+        pars: List[float] = np.loadtxt(os.path.join(runresultdir, pf), unpack=True).tolist()
+        pmed = float(np.median(pars))
+        pstd = float(np.std(pars))
+        N, bin_ed = np.histogram(pars, bins="auto")
+        th = (5 * pstd) / 2
+        mode = bin_ed[np.argmax(N)]
+        # If we are to close to one border, we extend the parameter space 3std in that direction
+        if (mode - np.amin(pars)) <= th:
+            # Fail
+            pmin = max(0, np.amin(pars) - (2 * th))
+        else:
+            pmin = max(0, pmed - th)
+
+        if (np.amax(pars) - mode) <= th:
+            pmax = np.amax(pars) + (2 * th)
+        else:
+            pmax = pmed + th
+
+        if pmax - pmin > 1e4:
+            line = hyperparams[i]
+            newline = (line[0].astype(float), line[1].astype(float))
+        else:
+            newline = (pmin, pmax)
+        new_params_list.append(newline)
+    return new_params_list
+
+
+def auto_adjust_run_hyperparameters(
+    run: str, resultdir: str
+) -> List[Tuple[float, float]]:
+    runresultdir = os.path.join(resultdir, run)
+    hyperparamsfile = os.path.join(
+        resultdir, "background_hyperParameters_" + run + ".txt"
+    )
+    return auto_adjust_hyperparameters(
+        hyperparamsfile, runresultdir, get_paramfiles(runresultdir)
+    )
+
+
 def evaluate(
     idstr, run, auto=False, includelist=None, *, userresume=None, usersure=None
 ):
@@ -792,17 +851,7 @@ def evaluate(
                 runresultdir, "background_computationParameters.txt"
             )
 
-            # Count number of params
-            paramfiles = [p for p in os.listdir(runresultdir) if "parameter0" in p]
-
-            # Human-sort list
-            # https://stackoverflow.com/questions/4623446/how-do-you-sort-files-numerically
-            paramfiles.sort(
-                key=lambda var: [
-                    int(x) if x.isdigit() else x
-                    for x in re.findall(r"[^0-9]|[0-9]+", var)
-                ]
-            )
+            paramfiles = get_paramfiles(runresultdir)
             print("Number of parameters", len(paramfiles))
 
             # Make A4 figure
@@ -918,36 +967,11 @@ def evaluate(
                     hyperparamsfile = os.path.join(
                         resultdir, "background_hyperParameters_" + r + ".txt"
                     )
-                    hyperparams = np.loadtxt(hyperparamsfile, skiprows=6, unpack=True).T
-                    new_params = []
-                    for i, pf in enumerate(paramfiles):
-                        pars = np.loadtxt(os.path.join(runresultdir, pf), unpack=True)
-                        pmed = np.median(pars)
-                        pstd = np.std(pars)
-                        N, bin_ed = np.histogram(pars, bins="auto")
-                        th = (5 * pstd) / 2
-                        mode = bin_ed[np.argmax(N)]
-                        # If we are to close to one border, we extend the parameter space 3std in that direction
-                        if (mode - np.amin(pars)) <= th:
-                            # Fail
-                            pmin = max(0, np.amin(pars) - (2 * th))
-                        else:
-                            pmin = max(0, pmed - th)
-
-                        if (np.amax(pars) - mode) <= th:
-                            pmax = np.amax(pars) + (2 * th)
-                        else:
-                            pmax = pmed + th
-
-                        if pmax - pmin > 1e4:
-                            line = hyperparams[i]
-                            newline = [line[0].astype(float), line[1].astype(float)]
-                        else:
-                            newline = [pmin, pmax]
-                        new_params.extend(newline)
-
-                    new_params = np.asarray(new_params)
-                    new_params = np.reshape(new_params, ((len(new_params) // 2), 2))
+                    new_params = np.asarray( auto_adjust_hyperparameters(
+                        hyperparamsfile,
+                        runresultdir,
+                        paramfiles,
+                    ))
                     log_row["params"] = json.dumps(
                         {"model": model_name, "params": new_params.tolist()}
                     )
